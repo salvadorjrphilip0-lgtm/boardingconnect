@@ -50,6 +50,15 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "OK", message: "Boarding Connect API is running" });
 });
 
+// Root route (useful for Vercel deployment sanity checks)
+app.get("/", (req, res) => {
+  res.json({
+    status: "OK",
+    message: "Boarding Connect API",
+    health: "/api/health",
+  });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -64,8 +73,12 @@ app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
-  console.log(`📍 Environment: ${process.env.NODE_ENV || "development"}`);
-});
+export default app;
+
+// Start server only for local development/non-serverless environments
+if (process.env.VERCEL !== "1") {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server is running on port ${PORT}`);
+    console.log(`📍 Environment: ${process.env.NODE_ENV || "development"}`);
+  });
+}
