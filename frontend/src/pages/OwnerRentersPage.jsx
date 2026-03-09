@@ -1,11 +1,17 @@
 import { useState, useEffect } from "react";
 import { agreementService } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
-import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import toast from "react-hot-toast";
 import RenterSidebar from "../components/RenterSidebar";
 import OwnerSidebar from "../components/OwnerSidebar";
+import {
+  getPaymentStatusBadge,
+  getPaymentAmountFromAgreement,
+  parseAgreementTerms,
+  getRentCycleDay,
+  getTimeStatusBadge,
+} from "../utils/renterStatus";
 
 const OwnerRentersPage = () => {
   const { user } = useAuth();
@@ -15,6 +21,8 @@ const OwnerRentersPage = () => {
   const [editValues, setEditValues] = useState({
     start_date: "",
     due_date: "",
+    contract_date: "",
+    payment_amount: "",
   });
 
   useEffect(() => {
@@ -41,18 +49,34 @@ const OwnerRentersPage = () => {
         ? agreement.renter_confirmed_at.split("T")[0]
         : "",
       due_date: agreement.due_date ? agreement.due_date.split("T")[0] : "",
+      contract_date: agreement.end_date ? agreement.end_date.split("T")[0] : "",
+      payment_amount: String(getPaymentAmountFromAgreement(agreement) || ""),
     });
   };
 
   const saveEdit = async () => {
     try {
-      await agreementService.updateStatus(editingId, editValues);
-      toast.success("Dates updated");
+      const payload = {
+        start_date: editValues.start_date || null,
+        due_date: editValues.due_date || null,
+        contract_date: editValues.contract_date || null,
+      };
+
+      if (
+        editValues.payment_amount !== "" &&
+        editValues.payment_amount !== null &&
+        editValues.payment_amount !== undefined
+      ) {
+        payload.payment_amount = Number(editValues.payment_amount);
+      }
+
+      await agreementService.updateStatus(editingId, payload);
+      toast.success("Renter details updated");
       setEditingId(null);
       fetchData();
     } catch (err) {
-      console.error("Error updating dates", err);
-      toast.error("Failed to update dates");
+      console.error("Error updating renter details", err);
+      toast.error(err?.response?.data?.message || "Failed to update details");
     }
   };
 
@@ -68,66 +92,27 @@ const OwnerRentersPage = () => {
     }
   };
 
-  const getStatusBadge = (agreement) => {
-    if (agreement.rent_status === "paid") {
-      return {
-        text: "Paid",
-        bgColor: "bg-green-100",
-        textColor: "text-green-700",
-        borderColor: "border-green-300",
-      };
-    }
+  const buildAgreementWithPaymentOverride = (
+    agreement,
+    paymentAmountOverride,
+  ) => {
+    const parsedOverride = Number(paymentAmountOverride);
+    const hasOverride =
+      paymentAmountOverride !== undefined &&
+      paymentAmountOverride !== null &&
+      paymentAmountOverride !== "" &&
+      Number.isFinite(parsedOverride);
 
-    if (agreement.rent_status === "cancelled") {
-      return {
-        text: "Cancelled",
-        bgColor: "bg-gray-100",
-        textColor: "text-gray-700",
-        borderColor: "border-gray-300",
-      };
-    }
+    if (!hasOverride) return agreement;
 
-    if (!agreement.due_date) {
-      return {
-        text: "No Due Date",
-        bgColor: "bg-gray-100",
-        textColor: "text-gray-700",
-        borderColor: "border-gray-300",
-      };
-    }
-
-    const dueDate = new Date(agreement.due_date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    dueDate.setHours(0, 0, 0, 0);
-
-    const daysUntilDue = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24));
-
-    if (daysUntilDue < 0) {
-      // Overdue (red)
-      return {
-        text: "Overdue",
-        bgColor: "bg-red-100",
-        textColor: "text-red-700",
-        borderColor: "border-red-300",
-      };
-    } else if (daysUntilDue <= 7) {
-      // Within 1 week (orange)
-      return {
-        text: `Due in ${daysUntilDue} days`,
-        bgColor: "bg-orange-100",
-        textColor: "text-orange-700",
-        borderColor: "border-orange-300",
-      };
-    } else {
-      // More than 1 week (green)
-      return {
-        text: "On Track",
-        bgColor: "bg-green-100",
-        textColor: "text-green-700",
-        borderColor: "border-green-300",
-      };
-    }
+    const currentTerms = parseAgreementTerms(agreement?.terms);
+    return {
+      ...agreement,
+      terms: JSON.stringify({
+        ...currentTerms,
+        payment_amount: parsedOverride,
+      }),
+    };
   };
 
   if (loading) {
@@ -149,111 +134,197 @@ const OwnerRentersPage = () => {
         </div>
 
         {agreements.length > 0 ? (
-          <table className="min-w-full table-auto">
-            <thead>
-              <tr className="bg-gray-200">
-                <th className="px-4 py-2">Renter</th>
-                <th className="px-4 py-2">Listing</th>
-                <th className="px-4 py-2">Start Date</th>
-                <th className="px-4 py-2">Due Date</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {agreements.map((a) => (
-                <tr key={a.id} className="border-b">
-                  <td className="px-4 py-2">
-                    {a.renter?.full_name || "Unknown"}
-                  </td>
-                  <td className="px-4 py-2">{a.listing?.title || "-"}</td>
-                  <td className="px-4 py-2">
-                    {editingId === a.id ? (
-                      <input
-                        type="date"
-                        value={editValues.start_date}
-                        onChange={(e) =>
-                          setEditValues({
-                            ...editValues,
-                            start_date: e.target.value,
-                          })
-                        }
-                        className="input-field"
-                      />
-                    ) : a.renter_confirmed_at ? (
-                      new Date(a.renter_confirmed_at).toLocaleDateString()
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    {editingId === a.id ? (
-                      <input
-                        type="date"
-                        value={editValues.due_date}
-                        onChange={(e) =>
-                          setEditValues({
-                            ...editValues,
-                            due_date: e.target.value,
-                          })
-                        }
-                        className="input-field"
-                      />
-                    ) : a.due_date ? (
-                      new Date(a.due_date).toLocaleDateString()
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td className="px-4 py-2">
-                    {(() => {
-                      const badge = getStatusBadge(a);
-                      return (
-                        <span
-                          className={`px-3 py-1 rounded-full text-sm font-semibold border ${badge.bgColor} ${badge.textColor} ${badge.borderColor}`}
-                        >
-                          {badge.text}
-                        </span>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-4 py-2 space-x-2">
-                    {editingId === a.id ? (
-                      <>
-                        <button
-                          onClick={saveEdit}
-                          className="btn-primary btn-sm"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => setEditingId(null)}
-                          className="btn-secondary btn-sm"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => handleEdit(a)}
-                          className="btn-primary btn-sm"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => cancelAgreement(a.id)}
-                          className="text-red-600 btn-sm"
-                        >
-                          Remove
-                        </button>
-                      </>
-                    )}
-                  </td>
+          <div className="overflow-x-auto w-full">
+            <table className="min-w-[1250px] w-full table-auto">
+              <thead>
+                <tr className="bg-gray-200">
+                  <th className="px-4 py-2 whitespace-nowrap">Renter</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Listing</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Start Date</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Due Date</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Contract Date</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Payment</th>
+                  <th className="px-4 py-2 whitespace-nowrap">
+                    Payment Status
+                  </th>
+                  <th className="px-4 py-2 whitespace-nowrap"> Rent Status</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {agreements.map((a) => {
+                  const cycleDay = getRentCycleDay(a);
+                  const isRedCycleRow =
+                    typeof cycleDay === "number" &&
+                    cycleDay >= 31 &&
+                    cycleDay <= 37;
+
+                  return (
+                    <tr
+                      key={a.id}
+                      className={`border-b ${isRedCycleRow ? "bg-red-100" : ""}`}
+                    >
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {a.renter?.full_name || "Unknown"}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {a.listing?.title || "-"}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {editingId === a.id ? (
+                          <input
+                            type="date"
+                            value={editValues.start_date}
+                            onChange={(e) =>
+                              setEditValues({
+                                ...editValues,
+                                start_date: e.target.value,
+                              })
+                            }
+                            className="input-field"
+                          />
+                        ) : a.renter_confirmed_at ? (
+                          new Date(a.renter_confirmed_at).toLocaleDateString()
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {editingId === a.id ? (
+                          <input
+                            type="date"
+                            value={editValues.due_date}
+                            onChange={(e) =>
+                              setEditValues({
+                                ...editValues,
+                                due_date: e.target.value,
+                              })
+                            }
+                            className="input-field"
+                          />
+                        ) : a.due_date ? (
+                          new Date(a.due_date).toLocaleDateString()
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {editingId === a.id ? (
+                          <input
+                            type="date"
+                            value={editValues.contract_date}
+                            onChange={(e) =>
+                              setEditValues({
+                                ...editValues,
+                                contract_date: e.target.value,
+                              })
+                            }
+                            className="input-field"
+                          />
+                        ) : a.end_date ? (
+                          new Date(a.end_date).toLocaleDateString()
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td className="px-0 py-2 whitespace-nowrap">
+                        {editingId === a.id ? (
+                          <input
+                            type="number"
+                            min="0"
+                            step="1.00"
+                            value={editValues.payment_amount}
+                            onChange={(e) =>
+                              setEditValues({
+                                ...editValues,
+                                payment_amount: e.target.value,
+                              })
+                            }
+                            className="input-field"
+                            placeholder="Enter payment"
+                          />
+                        ) : (
+                          (() => {
+                            const amount = getPaymentAmountFromAgreement(a);
+                            return amount > 0
+                              ? `₱${amount.toLocaleString()}`
+                              : "-";
+                          })()
+                        )}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {(() => {
+                          const agreementForBadge =
+                            editingId === a.id
+                              ? buildAgreementWithPaymentOverride(
+                                  a,
+                                  editValues.payment_amount,
+                                )
+                              : a;
+
+                          const paymentBadge =
+                            getPaymentStatusBadge(agreementForBadge);
+
+                          return (
+                            <span
+                              className={`inline-flex w-fit px-3 py-1 rounded-full text-sm font-semibold border ${paymentBadge.bgColor} ${paymentBadge.textColor} ${paymentBadge.borderColor}`}
+                            >
+                              {paymentBadge.text}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        {(() => {
+                          const timeBadge = getTimeStatusBadge(a);
+                          return (
+                            <span
+                              className={`inline-flex w-fit px-3 py-1 rounded-full text-sm font-semibold border ${timeBadge.bgColor} ${timeBadge.textColor} ${timeBadge.borderColor}`}
+                            >
+                              {timeBadge.text}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-2 whitespace-nowrap space-x-2">
+                        {editingId === a.id ? (
+                          <>
+                            <button
+                              onClick={saveEdit}
+                              className="btn-primary btn-sm"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => setEditingId(null)}
+                              className="btn-secondary btn-sm"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleEdit(a)}
+                              className="btn-primary btn-sm"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => cancelAgreement(a.id)}
+                              className="text-red-600 btn-sm"
+                            >
+                              Remove
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <div className="text-center py-20">
             <p className="text-gray-600">No renters found.</p>

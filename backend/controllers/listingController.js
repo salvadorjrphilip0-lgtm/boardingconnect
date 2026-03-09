@@ -42,6 +42,31 @@ export const getAllListings = async (req, res) => {
 
     if (error) throw error;
 
+    const listingIds = (data || []).map((listing) => listing.id);
+    let ratingSummaryByListing = {};
+
+    if (listingIds.length > 0) {
+      const { data: reviewRows, error: reviewsError } = await supabase
+        .from("reviews")
+        .select("listing_id, rating")
+        .in("listing_id", listingIds);
+
+      if (reviewsError) throw reviewsError;
+
+      ratingSummaryByListing = (reviewRows || []).reduce((acc, review) => {
+        const listingId = review.listing_id;
+        const rating = Number(review.rating) || 0;
+
+        if (!acc[listingId]) {
+          acc[listingId] = { totalRatings: 0, ratingTotal: 0 };
+        }
+
+        acc[listingId].totalRatings += 1;
+        acc[listingId].ratingTotal += rating;
+        return acc;
+      }, {});
+    }
+
     // Transform data and ensure any stored images_paths are converted to public URLs
     const listings = await Promise.all(
       data.map(async (listing) => {
@@ -89,6 +114,16 @@ export const getAllListings = async (req, res) => {
             phone: listing.owner.phone,
             profilePicture: listing.owner.profile_picture,
           },
+          totalRatings: ratingSummaryByListing[listing.id]?.totalRatings || 0,
+          averageRating:
+            (ratingSummaryByListing[listing.id]?.totalRatings || 0) > 0
+              ? Number(
+                  (
+                    ratingSummaryByListing[listing.id].ratingTotal /
+                    ratingSummaryByListing[listing.id].totalRatings
+                  ).toFixed(1),
+                )
+              : 0,
           createdAt: listing.created_at,
         };
       }),
@@ -139,6 +174,26 @@ export const getListingById = async (req, res) => {
       images = urls.filter((u) => !!u);
     }
 
+    const { data: reviewRows, error: reviewsError } = await supabase
+      .from("reviews")
+      .select("rating")
+      .eq("listing_id", id);
+
+    if (reviewsError) throw reviewsError;
+
+    const totalRatings = (reviewRows || []).length;
+    const averageRating =
+      totalRatings > 0
+        ? Number(
+            (
+              (reviewRows || []).reduce(
+                (sum, row) => sum + (Number(row.rating) || 0),
+                0,
+              ) / totalRatings
+            ).toFixed(1),
+          )
+        : 0;
+
     const listing = {
       id: data.id,
       title: data.title,
@@ -159,6 +214,8 @@ export const getListingById = async (req, res) => {
         phone: data.owner.phone,
         profilePicture: data.owner.profile_picture,
       },
+      totalRatings,
+      averageRating,
       createdAt: data.created_at,
     };
 

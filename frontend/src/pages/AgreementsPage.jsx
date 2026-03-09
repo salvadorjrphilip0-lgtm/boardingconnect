@@ -4,20 +4,30 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  Sidebar,
+  Star,
 } from "lucide-react";
-import { agreementService } from "../services/api";
+import { agreementService, reviewService } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import toast from "react-hot-toast";
 import RenterSidebar from "../components/RenterSidebar";
 import OwnerSidebar from "../components/OwnerSidebar";
+import {
+  getPaymentStatusBadge,
+  getTimeStatusBadge,
+} from "../utils/renterStatus";
 
 const AgreementsPage = () => {
   const { user } = useAuth();
   const [agreements, setAgreements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewAgreement, setReviewAgreement] = useState(null);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewedListingIds, setReviewedListingIds] = useState([]);
 
   useEffect(() => {
     if (!user) {
@@ -43,6 +53,30 @@ const AgreementsPage = () => {
         data = data.filter(
           (a) => !["pending", "pending_owner"].includes(a.status),
         );
+
+        const listingIds = Array.from(
+          new Set(
+            data.map((agreement) => agreement?.listing?.id).filter(Boolean),
+          ),
+        );
+
+        const reviewFlags = await Promise.all(
+          listingIds.map(async (listingId) => {
+            try {
+              const reviewData = await reviewService.getByListing(listingId);
+              const alreadyReviewed = (reviewData?.reviews || []).some(
+                (review) => review.renter_id === user.id,
+              );
+              return alreadyReviewed ? listingId : null;
+            } catch {
+              return null;
+            }
+          }),
+        );
+
+        setReviewedListingIds(reviewFlags.filter(Boolean));
+      } else {
+        setReviewedListingIds([]);
       }
 
       setAgreements(data);
@@ -57,12 +91,23 @@ const AgreementsPage = () => {
     if (!confirm("Are you sure you want to confirm this agreement?")) return;
 
     try {
+      const currentAgreement = agreements.find(
+        (agreement) => agreement.id === id,
+      );
+
       if (user?.role === "owner") {
         await agreementService.confirmByOwner(id);
         toast.success("Agreement owner confirmation recorded");
       } else if (user?.role === "renter") {
         await agreementService.confirmByRenter(id);
         toast.success("Agreement renter confirmation recorded");
+
+        if (currentAgreement?.listing?.id) {
+          setReviewAgreement(currentAgreement);
+          setReviewRating(0);
+          setReviewComment("");
+          setShowReviewModal(true);
+        }
       } else {
         // fallback generic confirm
         await agreementService.confirm(id);
@@ -76,6 +121,63 @@ const AgreementsPage = () => {
     }
   };
 
+  const closeReviewModal = () => {
+    setShowReviewModal(false);
+    setReviewAgreement(null);
+    setReviewRating(0);
+    setReviewComment("");
+  };
+
+  const openReviewModalForAgreement = (agreement) => {
+    if (!agreement?.listing?.id) {
+      toast.error("Missing listing details for review");
+      return;
+    }
+    setReviewAgreement(agreement);
+    setReviewRating(0);
+    setReviewComment("");
+    setShowReviewModal(true);
+  };
+
+  const submitReview = async () => {
+    if (!reviewAgreement?.listing?.id) {
+      toast.error("Missing listing details for review");
+      return;
+    }
+
+    if (reviewRating < 1 || reviewRating > 5) {
+      toast.error("Please select a rating from 1 to 5 stars");
+      return;
+    }
+
+    if (!reviewComment.trim()) {
+      toast.error("Please add a comment about your agreement experience");
+      return;
+    }
+
+    try {
+      setSubmittingReview(true);
+      await reviewService.create({
+        listing_id: reviewAgreement.listing.id,
+        rating: reviewRating,
+        title: "Agreement & Boarding House Review",
+        comment: reviewComment.trim(),
+      });
+
+      toast.success("Thanks! Your review has been posted.");
+      setReviewedListingIds((prev) =>
+        prev.includes(reviewAgreement.listing.id)
+          ? prev
+          : [...prev, reviewAgreement.listing.id],
+      );
+      closeReviewModal();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to submit review");
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
   const handleCancel = async (id) => {
     const reason = prompt("Please provide a reason for cancellation:");
     if (!reason) return;
@@ -86,16 +188,6 @@ const AgreementsPage = () => {
       fetchAgreements();
     } catch (error) {
       toast.error("Failed to cancel agreement");
-    }
-  };
-
-  const handleRentUpdate = async (id, status) => {
-    try {
-      await agreementService.updateStatus(id, { rent_status: status });
-      toast.success("Rent status updated");
-      fetchAgreements();
-    } catch (err) {
-      toast.error("Failed to update rent status");
     }
   };
 
@@ -217,41 +309,37 @@ const AgreementsPage = () => {
                     <h4 className="font-semibold text-gray-900 mb-2">
                       Terms & Conditions
                     </h4>
-                    <p className="text-gray-700 text-sm">{agreement.terms}</p>
+                    <p className="text-gray-700 text-sm">
+                      Renter must follow boarding house rules, pay rent on time,
+                      maintain cleanliness, respect owners and co-renters, avoid
+                      prohibited activities, and be responsible for damages.
+                      Management may terminate occupancy if rules are violated.
+                    </p>
                   </div>
                 )}
 
-                {/* Rent status display and actions for owner */}
-                {user.role === "owner" && (
-                  <div className="mb-4">
-                    <p className="text-sm text-gray-600">Rent Status</p>
-                    <p className="font-semibold text-gray-900 capitalize">
-                      {agreement.rent_status || "due"}
-                    </p>
-                    <div className="mt-2 space-x-2">
-                      <button
-                        onClick={() => handleRentUpdate(agreement.id, "paid")}
-                        className="btn-primary btn-sm"
-                      >
-                        Mark Paid
-                      </button>
-                      <button
-                        onClick={() => handleRentUpdate(agreement.id, "due")}
-                        className="btn-secondary btn-sm"
-                      >
-                        Due
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleRentUpdate(agreement.id, "cancelled")
-                        }
-                        className="text-red-600 hover:text-red-800 text-sm"
-                      >
-                        Cancel Rent
-                      </button>
-                    </div>
-                  </div>
-                )}
+                {/* Renter status visible for both owner and renter views */}
+                <div className="mb-4">
+                  <p className="text-sm text-gray-600">Renter Status</p>
+                  {(() => {
+                    const paymentStatus = getPaymentStatusBadge(agreement);
+                    const timeStatus = getTimeStatusBadge(agreement);
+                    return (
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        <span
+                          className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold border ${paymentStatus.color}`}
+                        >
+                          {paymentStatus.text}
+                        </span>
+                        <span
+                          className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold border ${timeStatus.color}`}
+                        >
+                          {timeStatus.text}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
 
                 <div className="flex justify-between items-center">
                   <p className="text-sm text-gray-500">
@@ -298,6 +386,29 @@ const AgreementsPage = () => {
                       </div>
                     )}
 
+                  {user?.role === "renter" &&
+                    ["confirmed", "active"].includes(agreement.status) && (
+                      <div className="space-x-2">
+                        {reviewedListingIds.includes(agreement.listing?.id) ? (
+                          <button
+                            disabled
+                            className="px-3 py-2 rounded-md text-sm bg-green-100 text-green-700 cursor-not-allowed"
+                          >
+                            Reviewed
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() =>
+                              openReviewModalForAgreement(agreement)
+                            }
+                            className="px-3 py-2 rounded-md text-sm bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+                          >
+                            Submit Review
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                   {agreement.status === "confirmed" && (
                     <button
                       onClick={() => handleCancel(agreement.id)}
@@ -324,6 +435,82 @@ const AgreementsPage = () => {
       </div>
 
       <Footer />
+
+      {showReviewModal && reviewAgreement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              Rate Your Agreement
+            </h2>
+            <p className="text-gray-600 mb-4">
+              You confirmed your agreement with{" "}
+              {reviewAgreement.owner?.full_name || "the owner"}. Share your
+              rating and comment for{" "}
+              {reviewAgreement.listing?.title || "this boarding house"}.
+            </p>
+
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-gray-700 mb-2">Rating</p>
+              <div className="flex items-center gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setReviewRating(star)}
+                    className="transition-transform hover:scale-110"
+                    aria-label={`Rate ${star} star${star > 1 ? "s" : ""}`}
+                  >
+                    <Star
+                      className={`h-8 w-8 ${
+                        star <= reviewRating
+                          ? "text-yellow-500 fill-yellow-500"
+                          : "text-gray-300"
+                      }`}
+                    />
+                  </button>
+                ))}
+                {reviewRating > 0 && (
+                  <span className="text-sm text-gray-600 ml-2">
+                    {reviewRating}/5
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Comment about the agreement and boarding house
+              </label>
+              <textarea
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                rows={4}
+                placeholder="Share your experience..."
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeReviewModal}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                disabled={submittingReview}
+              >
+                Skip
+              </button>
+              <button
+                type="button"
+                onClick={submitReview}
+                className="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-60"
+                disabled={submittingReview}
+              >
+                {submittingReview ? "Submitting..." : "Submit Review"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

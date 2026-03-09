@@ -4,6 +4,7 @@ import {
   getRenterConcerns,
   getAllConcerns,
   respondToConcern,
+  renterReplyToConcern,
   resolveConcern,
   getConcernDetail,
 } from "../controllers/concernController.js";
@@ -17,21 +18,28 @@ router.get(
   "/admin/all",
   authenticateToken,
   requireRole("admin"),
-  getAllConcerns
+  getAllConcerns,
 );
 
 router.patch(
   "/:concern_id/respond",
   authenticateToken,
   requireRole("admin"),
-  respondToConcern
+  respondToConcern,
+);
+
+router.patch(
+  "/:concern_id/renter-reply",
+  authenticateToken,
+  requireRole("renter"),
+  renterReplyToConcern,
 );
 
 router.patch(
   "/:concern_id/resolve",
   authenticateToken,
   requireRole("admin"),
-  resolveConcern
+  resolveConcern,
 );
 
 // Protected routes - requires authentication
@@ -39,7 +47,7 @@ router.post(
   "/",
   authenticateToken,
   requirePermission("create_concern"),
-  createConcern
+  createConcern,
 );
 
 router.get("/", authenticateToken, getRenterConcerns);

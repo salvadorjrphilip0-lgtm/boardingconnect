@@ -1,335 +1,271 @@
-import React, { useEffect, useState } from "react";
-import { reportService } from "../services/api";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  agreementService,
+  listingService,
+  reviewService,
+  websiteReviewService,
+} from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "react-hot-toast";
 import AdminSidebar from "../components/AdminSidebar";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
+import { getTimeStatusBadge } from "../utils/renterStatus";
 
 export default function ReportsPage() {
   const { user } = useAuth();
-  const [reports, setReports] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [ownerRows, setOwnerRows] = useState([]);
+  const [roomRows, setRoomRows] = useState([]);
+  const [boardingHouseReviews, setBoardingHouseReviews] = useState([]);
+  const [boardingHouseReviewSummary, setBoardingHouseReviewSummary] = useState({
+    total_reviews: 0,
+    average_rating: 0,
+  });
+  const [systemReviews, setSystemReviews] = useState([]);
+  const [systemReviewSummary, setSystemReviewSummary] = useState({
+    total_reviews: 0,
+    average_rating: 0,
+  });
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [selectedReport, setSelectedReport] = useState(null);
-  const [filter, setFilter] = useState("");
 
   useEffect(() => {
+    if (!user || user.role !== "admin") return;
     fetchReports();
-  }, [page, filter]);
+  }, [user]);
 
   const fetchReports = async () => {
     try {
       setLoading(true);
-      const data = await reportService.getAll(page, 20, filter);
-      setReports(data.reports || []);
-      setTotalPages(Math.ceil((data.pagination?.total || 0) / 20));
+      const [agreements, listings, reviewData, websiteReviewData] =
+        await Promise.all([
+          agreementService.getAll(),
+          listingService.getAll(),
+          reviewService.getAll(1, 1000),
+          websiteReviewService.getAdminSummary(),
+        ]);
+
+      const renterRows = (agreements || [])
+        .filter((agreement) => agreement?.renter?.id)
+        .map((agreement) => {
+          const moveInDate = agreement.renter_confirmed_at || null;
+          const dueDate = agreement.due_date || null;
+          const contractDate = agreement.end_date || null;
+
+          return {
+            id: agreement.id,
+            renterName: agreement.renter?.full_name || "Unknown Renter",
+            contactNumber: agreement.renter?.phone || "N/A",
+            boardingHouseTitle: agreement.listing?.title || "Untitled Listing",
+            moveInDate,
+            dueDate,
+            contractDate,
+            rentStatus: agreement.rent_status,
+          };
+        });
+
+      const occupancyAgreements = (agreements || []).filter((agreement) => {
+        if (!agreement?.renter?.id) return false;
+
+        const normalizedStatus = String(agreement.status || "").toLowerCase();
+        return (
+          normalizedStatus === "confirmed" || normalizedStatus === "active"
+        );
+      });
+
+      const rentersByListingId = occupancyAgreements.reduce(
+        (acc, agreement) => {
+          const listingId = agreement?.listing?.id || agreement?.listing_id;
+          if (!listingId) return acc;
+
+          if (!acc[listingId]) {
+            acc[listingId] = [];
+          }
+
+          const renterName = agreement?.renter?.full_name?.trim();
+          if (renterName && !acc[listingId].includes(renterName)) {
+            acc[listingId].push(renterName);
+          }
+
+          return acc;
+        },
+        {},
+      );
+
+      const mappedRooms = (listings || []).map((listing) => {
+        const assignedRenters = rentersByListingId[listing.id] || [];
+        const occupiedSlots = assignedRenters.length;
+        const amenities = Array.isArray(listing.amenities)
+          ? listing.amenities.join(", ")
+          : listing.amenities || "N/A";
+        const slotsRemaining = Number.isFinite(listing.capacity)
+          ? Math.max(0, listing.capacity)
+          : 0;
+
+        return {
+          id: listing.id,
+          title: listing.title || "Untitled Listing",
+          location: listing.location || "N/A",
+          amenities,
+          occupiedSlots,
+          slotsRemaining,
+          occupancyStatus: `${occupiedSlots} occupied • ${slotsRemaining} remaining`,
+          renterAssigned:
+            assignedRenters.length > 0 ? assignedRenters.join(", ") : "-",
+        };
+      });
+
+      const ownerPostedCountById = (listings || []).reduce((acc, listing) => {
+        const ownerId =
+          listing.ownerId || listing.owner?.id || listing.owner_id || null;
+        if (!ownerId) return acc;
+
+        acc[ownerId] = (acc[ownerId] || 0) + 1;
+        return acc;
+      }, {});
+
+      const mappedOwnerRows = (listings || [])
+        .map((listing) => {
+          const ownerId =
+            listing.ownerId || listing.owner?.id || listing.owner_id || null;
+          const ownerName =
+            listing.owner?.fullName ||
+            listing.owner?.full_name ||
+            listing.owner?.name ||
+            "Unknown Owner";
+          const ownerContact = listing.owner?.phone || "N/A";
+          const ownerEmail = listing.owner?.email || "N/A";
+          const renters = rentersByListingId[listing.id] || [];
+
+          return {
+            id: `${ownerId || "unknown-owner"}-${listing.id || "unknown-listing"}`,
+            ownerKey: ownerId || `${ownerName}-${ownerEmail}`,
+            ownerName,
+            contactNumber: ownerContact,
+            email: ownerEmail,
+            postedCount: ownerId ? ownerPostedCountById[ownerId] || 0 : 0,
+            renters: renters.length > 0 ? renters.join(", ") : "-",
+            boardingHouseTitle: listing.title || "Untitled Listing",
+            date: listing.createdAt || listing.created_at || null,
+          };
+        })
+        .sort((a, b) => String(a.ownerName).localeCompare(String(b.ownerName)));
+
+      setRows(renterRows);
+      setOwnerRows(mappedOwnerRows);
+      setRoomRows(mappedRooms);
+
+      const mappedBoardingHouseReviews = (reviewData?.reviews || []).map(
+        (review) => ({
+          id: review.id,
+          renterName: review.users?.full_name || "Unknown Renter",
+          boardingHouseTitle: review.listings?.title || "Untitled Listing",
+          boardingHouseOwner:
+            review.listings?.owner?.full_name || "Unknown Owner",
+          comment: review.comment || "-",
+          rating: Number(review.rating) || 0,
+        }),
+      );
+
+      setBoardingHouseReviews(mappedBoardingHouseReviews);
+      setBoardingHouseReviewSummary({
+        total_reviews:
+          Number(reviewData?.pagination?.total) ||
+          mappedBoardingHouseReviews.length,
+        average_rating: Number(reviewData?.average_rating) || 0,
+      });
+
+      const mappedSystemReviews = (websiteReviewData?.reviews || []).map(
+        (review) => ({
+          id: review.id,
+          name: review.full_name || "Unknown User",
+          role: review.role || "unknown",
+          comment: review.comment || "-",
+          rating: Number(review.rating) || 0,
+        }),
+      );
+
+      setSystemReviews(mappedSystemReviews);
+      setSystemReviewSummary({
+        total_reviews: Number(websiteReviewData?.summary?.total_reviews) || 0,
+        average_rating: Number(websiteReviewData?.summary?.average_rating) || 0,
+      });
     } catch (error) {
-      console.error("Error fetching reports:", error);
+      console.error("Failed to load admin reports:", error);
       toast.error("Failed to load reports");
     } finally {
       setLoading(false);
     }
   };
 
-  const generateUserActivityReport = async () => {
-    try {
-      setGenerating(true);
-      await reportService.generateUserActivity(null, null);
-      toast.success("User Activity Report generated");
-      fetchReports();
-    } catch (error) {
-      console.error("Error generating report:", error);
-      toast.error("Failed to generate report");
-    } finally {
-      setGenerating(false);
-    }
+  const formatDate = (value) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "-" : date.toLocaleDateString();
   };
 
-  const generateListingVerificationReport = async () => {
-    try {
-      setGenerating(true);
-      await reportService.generateListingVerification();
-      toast.success("Listing Verification Report generated");
-      fetchReports();
-    } catch (error) {
-      console.error("Error generating report:", error);
-      toast.error("Failed to generate report");
-    } finally {
-      setGenerating(false);
-    }
-  };
+  const getDurationOfStay = (moveInDateValue) => {
+    if (!moveInDateValue) return "-";
 
-  const generateConcernsSummaryReport = async () => {
-    try {
-      setGenerating(true);
-      await reportService.generateConcernsSummary(null, 30);
-      toast.success("Concerns Summary Report generated");
-      fetchReports();
-    } catch (error) {
-      console.error("Error generating report:", error);
-      toast.error("Failed to generate report");
-    } finally {
-      setGenerating(false);
-    }
-  };
+    const moveInDate = new Date(moveInDateValue);
+    const today = new Date();
 
-  const deleteReport = async (reportId) => {
-    try {
-      if (window.confirm("Are you sure you want to delete this report?")) {
-        await reportService.delete(reportId);
-        toast.success("Report deleted successfully");
-        fetchReports();
-      }
-    } catch (error) {
-      console.error("Error deleting report:", error);
-      toast.error("Failed to delete report");
-    }
-  };
+    if (Number.isNaN(moveInDate.getTime())) return "-";
 
-  const getReportTypeColor = (type) => {
-    switch (type) {
-      case "user_activity":
-        return "bg-blue-100 text-blue-800";
-      case "listing_verification":
-        return "bg-green-100 text-green-800";
-      case "concerns_summary":
-        return "bg-purple-100 text-purple-800";
-      case "revenue":
-        return "bg-yellow-100 text-yellow-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
+    moveInDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
 
-  const BarChart = ({ items = [], labelKey = "label", valueKey = "value" }) => {
-    const max = Math.max(...items.map((i) => i[valueKey] || 0), 1);
-    return (
-      <div className="space-y-2">
-        {items.map((it, idx) => (
-          <div key={idx} className="flex items-center gap-3">
-            <div className="w-32 text-sm text-gray-700">{it[labelKey]}</div>
-            <div className="flex-1 bg-gray-200 h-4 rounded overflow-hidden">
-              <div
-                style={{ width: `${Math.round(((it[valueKey] || 0) / max) * 100)}%` }}
-                className="h-4 bg-blue-600"
-                title={`${it[valueKey] || 0}`}
-              />
-            </div>
-            <div className="w-16 text-right text-sm text-gray-600">{it[valueKey]}</div>
-          </div>
-        ))}
-      </div>
+    const days = Math.max(
+      0,
+      Math.floor((today - moveInDate) / (1000 * 60 * 60 * 24)),
     );
+
+    return `${days} day${days === 1 ? "" : "s"}`;
   };
 
-  const Donut = ({ a = 0, b = 1, size = 80, colors = ["#10B981", "#F3F4F6"] }) => {
-    const total = a + b || 1;
-    const pct = Math.round((a / total) * 100);
-    const stroke = 12;
-    const radius = (size - stroke) / 2;
-    const circumference = 2 * Math.PI * radius;
-    const offset = circumference * (1 - a / total);
-    return (
-      <div className="flex items-center gap-3">
-        <svg width={size} height={size} className="transform -rotate-90">
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={colors[1]}
-            strokeWidth={stroke}
-            fill="none"
-          />
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            stroke={colors[0]}
-            strokeWidth={stroke}
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-            fill="none"
-          />
-        </svg>
-        <div className="text-sm">
-          <div className="text-lg font-semibold">{pct}%</div>
-          <div className="text-xs text-gray-500">of primary</div>
-        </div>
-      </div>
-    );
+  const getRenterStatus = (moveInDateValue, dueDateValue, rentStatus) =>
+    getTimeStatusBadge({
+      renter_confirmed_at: moveInDateValue,
+      due_date: dueDateValue,
+      rent_status: rentStatus,
+    });
+
+  const formatUserRole = (role) => {
+    if (!role) return "-";
+    const normalizedRole = String(role).toLowerCase();
+    return normalizedRole === "renter"
+      ? "Renter"
+      : normalizedRole === "owner"
+        ? "Owner"
+        : role;
   };
 
-  const renderReportVisualization = (report) => {
-    const data = report.data || {};
-    switch (report.type) {
-      case "user_activity": {
-        const total = data.total_users || data.total || data.accounts_created || 0;
-        const byRole = data.users_by_role || data.roles || [];
-        const monthly = data.monthly_registrations || data.registrations_by_month || [];
-        const activities = data.activities || data.activity_counts || data.event_counts || {};
-        const activitiesArray = Array.isArray(activities)
-          ? activities
-          : Object.entries(activities || {}).map(([k, v]) => ({ label: k, value: v }));
-
-        return (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-            <div className="p-4 bg-white rounded shadow">
-              <div className="text-sm text-gray-500">Accounts created</div>
-              <div className="text-2xl font-bold">{total}</div>
-              {monthly.length > 0 && (
-                <div className="mt-3 text-sm text-gray-500">Recent registrations</div>
-              )}
-            </div>
-            <div className="p-4 bg-white rounded shadow md:col-span-2">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <div className="text-sm text-gray-500 mb-2">Users by role</div>
-                  <BarChart
-                    items={Array.isArray(byRole) ? byRole : Object.entries(byRole || {}).map(([k, v]) => ({ label: k, value: v }))}
-                    labelKey={"label"}
-                    valueKey={"value"}
-                  />
-                </div>
-                <div>
-                  <div className="text-sm text-gray-500 mb-2">Activity counts</div>
-                  <BarChart items={activitiesArray} />
-                </div>
-              </div>
-              {monthly.length > 0 && (
-                <div className="mt-4">
-                  <div className="text-sm text-gray-500 mb-2">Monthly registrations</div>
-                  <BarChart items={monthly.map((m) => ({ label: m.month || m.label || m.name, value: m.count || m.value || 0 }))} />
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      }
-      case "listing_verification": {
-        // Listings by status
-        const listingsByStatus = data.listings_by_status || data.listing_status || data.listings_counts || data.listings || {};
-        const listingStatuses = Array.isArray(listingsByStatus)
-          ? listingsByStatus
-          : Object.entries(listingsByStatus || {}).map(([k, v]) => ({ label: k, value: v }));
-
-        // Applicants/applications by status
-        const applicantsByStatus = data.applicants_by_status || data.applications_by_status || data.applicant_status || {};
-        const applicantStatuses = Array.isArray(applicantsByStatus)
-          ? applicantsByStatus
-          : Object.entries(applicantsByStatus || {}).map(([k, v]) => ({ label: k, value: v }));
-
-        // Agreements by status
-        const agreementsByStatus = data.agreements_by_status || data.agreement_status || data.agreements || {};
-        const agreementStatuses = Array.isArray(agreementsByStatus)
-          ? agreementsByStatus
-          : Object.entries(agreementsByStatus || {}).map(([k, v]) => ({ label: k, value: v }));
-
-        const verified = listingStatuses.find((s) => /verified/i.test(s.label))?.value || 0;
-        const pending = listingStatuses.find((s) => /pending/i.test(s.label))?.value || 0;
-        const cancelled = listingStatuses.find((s) => /cancel|decline/i.test(s.label))?.value || 0;
-
-        return (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-            <div className="p-4 bg-white rounded shadow">
-              <div className="text-sm text-gray-500 mb-2">Listings by status</div>
-              <BarChart items={listingStatuses.length ? listingStatuses : [
-                { label: 'Verified', value: verified },
-                { label: 'Pending', value: pending },
-                { label: 'Cancelled', value: cancelled },
-              ]} />
-            </div>
-
-            <div className="p-4 bg-white rounded shadow">
-              <div className="text-sm text-gray-500 mb-2">Applicants by status</div>
-              {
-                (() => {
-                  // normalize to map for deterministic totals
-                  const map = {};
-                  (applicantStatuses || []).forEach(s => {
-                    const key = (s.label || '').toString().toLowerCase();
-                    map[key] = (map[key] || 0) + (s.value || 0);
-                  });
-                  const verifiedCount = map['verified'] || map['accepted'] || map['confirmed'] || 0;
-                  const pendingCount = map['pending'] || 0;
-                  const cancelledCount = map['cancelled'] || map['cancel'] || map['declined'] || 0;
-                  const out = [
-                    { label: 'Verified', value: verifiedCount },
-                    { label: 'Pending', value: pendingCount },
-                    { label: 'Cancelled', value: cancelledCount },
-                  ];
-                  return <BarChart items={out} />;
-                })()
-              }
-            </div>
-
-            <div className="p-4 bg-white rounded shadow">
-              <div className="text-sm text-gray-500 mb-2">Agreements by status</div>
-              {
-                (() => {
-                  const map = {};
-                  (agreementStatuses || []).forEach(s => {
-                    const key = (s.label || '').toString().toLowerCase();
-                    map[key] = (map[key] || 0) + (s.value || 0);
-                  });
-                  const verifiedCount = map['accepted'] || map['accepted'] || map['confirmed'] || map['accepted'] || 0;
-                  const pendingCount = map['pending'] || 0;
-                  const cancelledCount = map['cancelled'] || map['cancel'] || map['declined'] || 0;
-                  const out = [
-                    { label: 'Verified', value: verifiedCount },
-                    { label: 'Pending', value: pendingCount },
-                    { label: 'Cancelled', value: cancelledCount },
-                  ];
-                  return <BarChart items={out} />;
-                })()
-              }
-            </div>
-          </div>
-        );
-      }
-      case "concerns_summary": {
-        const top = data.top_reasons || data.reasons || [];
-        const recent = data.recent_counts || [];
-        return (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-            <div className="p-4 bg-white rounded shadow">
-              <div className="text-sm text-gray-500 mb-2">Top reasons</div>
-              <BarChart items={(Array.isArray(top)?top: Object.entries(top).map(([k,v])=>({label:k,value:v})))} labelKey={"label"} valueKey={"value"} />
-            </div>
-            <div className="p-4 bg-white rounded shadow">
-              <div className="text-sm text-gray-500 mb-2">Recent counts</div>
-              <BarChart items={(Array.isArray(recent)?recent: [])} labelKey={"label"} valueKey={"count"} />
-            </div>
-          </div>
-        );
-      }
-      case "revenue": {
-        const months = data.monthly || data.by_month || [];
-        return (
-          <div className="p-4 bg-white rounded shadow mb-3">
-            <div className="text-sm text-gray-500 mb-2">Revenue by month</div>
-            <BarChart items={(Array.isArray(months)?months:[]).map(m=>({label:m.month||m.label,value:Math.round(m.revenue||m.value||0)}))} />
-          </div>
-        );
-      }
-      default:
-        return (
-          <div className="bg-gray-50 p-3 rounded mb-3 max-h-40 overflow-auto">
-            <pre className="text-xs text-gray-600 font-mono">
-              {JSON.stringify(data, null, 2)}
-            </pre>
-          </div>
-        );
-    }
-  };
+  const totalRenters = useMemo(() => rows.length, [rows]);
+  const totalOwners = useMemo(
+    () => new Set(ownerRows.map((row) => row.ownerKey)).size,
+    [ownerRows],
+  );
+  const totalRooms = useMemo(() => roomRows.length, [roomRows]);
+  const totalOccupancy = useMemo(
+    () =>
+      roomRows.reduce(
+        (total, row) => total + (Number(row.occupiedSlots) || 0),
+        0,
+      ),
+    [roomRows],
+  );
+  const totalSlotsRemaining = useMemo(
+    () =>
+      roomRows.reduce(
+        (total, row) => total + (Number(row.slotsRemaining) || 0),
+        0,
+      ),
+    [roomRows],
+  );
 
   if (!user || user.role !== "admin") {
     return (
-      <div className="flex flex-col min-h-screen bg-gray-50">        <Navbar />
-        
+      <div className="flex flex-col min-h-screen bg-gray-50">
         <Navbar />
         <div className="flex-grow flex items-center justify-center">
           <div className="text-center">
@@ -352,170 +288,338 @@ export default function ReportsPage() {
         <AdminSidebar />
 
         <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-           <div className="mb-8">
-              <h1 className="text-3xl font-bold text-gray-900">Reports</h1>
-           </div>
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Admin Reports
-            </h1>
-            <p className="text-gray-600 mb-6">
-              Generate and manage system reports
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">Reports</h1>
+            <p className="text-gray-600 mt-2">
+              Admin renter and room occupancy report summary
             </p>
+          </div>
 
-            {/* Generate Report Section */}
-            <div className="mb-8 p-6 bg-blue-50 rounded-lg border border-blue-200">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Generate New Report
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <button
-                  onClick={generateUserActivityReport}
-                  disabled={generating}
-                  className="p-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span className="font-semibold">User Activity</span>
-                  <p className="text-sm mt-1">
-                    Overview of user registrations and activities
-                  </p>
-                </button>
-                <button
-                  onClick={generateListingVerificationReport}
-                  disabled={generating}
-                  className="p-4 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span className="font-semibold">Listing Verification</span>
-                  <p className="text-sm mt-1">
-                    Status of listing verification process
-                  </p>
-                </button>
-                <button
-                  onClick={generateConcernsSummaryReport}
-                  disabled={generating}
-                  className="p-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span className="font-semibold">Concerns Summary</span>
-                  <p className="text-sm mt-1">Analysis of reported concerns</p>
-                </button>
-              </div>
-              {generating && (
-                <p className="text-sm text-gray-600 mt-4">
-                  Generating report...
-                </p>
-              )}
-            </div>
-
-            {/* Filter */}
+          <div className="bg-white rounded-lg shadow-md p-6">
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Filter by Type
-              </label>
-              <select
-                value={filter}
-                onChange={(e) => {
-                  setFilter(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full md:w-48 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Reports</option>
-                <option value="user_activity">User Activity</option>
-                <option value="listing_verification">
-                  Listing Verification
-                </option>
-                <option value="concerns_summary">Concerns Summary</option>
-                <option value="revenue">Revenue</option>
-              </select>
+              <h2 className="text-2xl font-bold text-gray-900">
+                Renter Reports
+              </h2>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <span className="inline-flex items-center rounded-full border border-gray-300 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                  Total Renter: {totalRenters}
+                </span>
+              </div>
             </div>
 
-            {/* Reports List */}
             {loading ? (
               <div className="text-center py-12">
-                <p className="text-gray-600">Loading reports...</p>
+                <p className="text-gray-600">Loading renter report...</p>
               </div>
-            ) : reports.length === 0 ? (
+            ) : rows.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-gray-600">
-                  No reports found. Generate a new one to get started.
-                </p>
+                <p className="text-gray-600">No renters found.</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {reports.map((report) => (
-                  <div
-                    key={report.id}
-                    className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50"
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-gray-900">
-                          {report.title}
-                        </h3>
-                        <p className="text-sm text-gray-600">
-                          {report.description}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span
-                          className={`inline-block px-3 py-1 text-sm rounded-full font-medium ${getReportTypeColor(
-                            report.type,
-                          )}`}
-                        >
-                          {report.type.replace(/_/g, " ")}
-                        </span>
-                        <p className="text-xs text-gray-500 mt-2">
-                          By: {report.users?.full_name || "Admin"}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Report Data Visualization */}
-                    {report.data && renderReportVisualization(report)}
-
-                    <div className="flex justify-between items-center mt-4">
-                      <p className="text-xs text-gray-500">
-                        {new Date(report.created_at).toLocaleString()}
-                      </p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setSelectedReport(report.id)}
-                          className="px-3 py-1 text-sm bg-blue-100 text-blue-600 hover:bg-blue-200 rounded"
-                        >
-                          View Details
-                        </button>
-                        <button
-                          onClick={() => deleteReport(report.id)}
-                          className="px-3 py-1 text-sm bg-red-100 text-red-600 hover:bg-red-200 rounded"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm text-center">
+                  <thead>
+                    <tr className="bg-gray-100 text-gray-700">
+                      <th className="px-3 py-2 text-center">Name</th>
+                      <th className="px-3 py-2 text-center">Contact Number</th>
+                      <th className="px-3 py-2 text-center">
+                        Boarding House Title
+                      </th>
+                      <th className="px-3 py-2 text-center">Start Date</th>
+                      <th className="px-3 py-2 text-center">Due Date</th>
+                      <th className="px-3 py-2 text-center">
+                        Contract Date (Optional)
+                      </th>
+                      <th className="px-3 py-2 text-center">
+                        Duration of Stay
+                      </th>
+                      <th className="px-3 py-2 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => {
+                      const status = getRenterStatus(
+                        row.moveInDate,
+                        row.dueDate,
+                        row.rentStatus,
+                      );
+                      return (
+                        <tr key={row.id} className="border-b">
+                          <td className="px-3 py-2">{row.renterName}</td>
+                          <td className="px-3 py-2">{row.contactNumber}</td>
+                          <td className="px-3 py-2">
+                            {row.boardingHouseTitle}
+                          </td>
+                          <td className="px-3 py-2">
+                            {formatDate(row.moveInDate)}
+                          </td>
+                          <td className="px-3 py-2">
+                            {formatDate(row.dueDate)}
+                          </td>
+                          <td className="px-3 py-2">
+                            {formatDate(row.contractDate)}
+                          </td>
+                          <td className="px-3 py-2">
+                            {getDurationOfStay(row.moveInDate)}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-semibold border ${status.style}`}
+                            >
+                              {status.text}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
+          </div>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex justify-center gap-2 mt-8">
-                <button
-                  onClick={() => setPage(Math.max(1, page - 1))}
-                  disabled={page === 1}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50"
-                >
-                  Previous
-                </button>
-                <span className="px-4 py-2">
-                  Page {page} of {totalPages}
+          <div className="bg-white rounded-lg shadow-md p-6 mt-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Owner Reports
+              </h2>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <span className="inline-flex items-center rounded-full border border-gray-300 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                  Total Owners: {totalOwners}
                 </span>
-                <button
-                  onClick={() => setPage(Math.min(totalPages, page + 1))}
-                  disabled={page === totalPages}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50"
-                >
-                  Next
-                </button>
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600">Loading owner report...</p>
+              </div>
+            ) : ownerRows.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600">No owner reports found.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm text-center">
+                  <thead>
+                    <tr className="bg-gray-100 text-gray-700">
+                      <th className="px-3 py-2 text-center">Name</th>
+                      <th className="px-3 py-2 text-center">Contact Number</th>
+                      <th className="px-3 py-2 text-center">Email</th>
+                      <th className="px-3 py-2 text-center">Posted Count</th>
+                      <th className="px-3 py-2 text-center">Renters</th>
+                      <th className="px-3 py-2 text-center">
+                        Boarding House Title
+                      </th>
+                      <th className="px-3 py-2 text-center">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ownerRows.map((row) => (
+                      <tr key={row.id} className="border-b">
+                        <td className="px-3 py-2">{row.ownerName}</td>
+                        <td className="px-3 py-2">{row.contactNumber}</td>
+                        <td className="px-3 py-2">{row.email}</td>
+                        <td className="px-3 py-2">{row.postedCount}</td>
+                        <td className="px-3 py-2">{row.renters}</td>
+                        <td className="px-3 py-2">{row.boardingHouseTitle}</td>
+                        <td className="px-3 py-2">{formatDate(row.date)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-lg shadow-md p-6 mt-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Boarding House &amp; Occupancy Report
+              </h2>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <span className="inline-flex items-center rounded-full border border-gray-300 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                  Total Boarding House: {totalRooms}
+                </span>
+                <span className="inline-flex items-center rounded-full border border-green-300 bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+                  Total Occupancy: {totalOccupancy}
+                </span>
+                <span className="inline-flex items-center rounded-full border border-blue-300 bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                  Total Slots Remaining: {totalSlotsRemaining}
+                </span>
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600">
+                  Loading room occupancy report...
+                </p>
+              </div>
+            ) : roomRows.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600">No rooms/listings found.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm text-center">
+                  <thead>
+                    <tr className="bg-gray-100 text-gray-700">
+                      <th className="px-3 py-2 text-center">Title</th>
+                      <th className="px-3 py-2 text-center">Location</th>
+                      <th className="px-3 py-2 text-center">Amenities</th>
+                      <th className="px-3 py-2 text-center">Slots Remaining</th>
+                      <th className="px-3 py-2 text-center">
+                        Occupancy Status
+                      </th>
+                      <th className="px-3 py-2 text-center">Renter Assigned</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {roomRows.map((room) => {
+                      const occupied = room.occupiedSlots > 0;
+
+                      return (
+                        <tr key={room.id} className="border-b">
+                          <td className="px-3 py-2">{room.title}</td>
+                          <td className="px-3 py-2">{room.location}</td>
+                          <td className="px-3 py-2">{room.amenities}</td>
+                          <td className="px-3 py-2">{room.slotsRemaining}</td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                                occupied
+                                  ? "bg-green-100 text-green-700 border-green-300"
+                                  : "bg-amber-100 text-amber-700 border-amber-300"
+                              }`}
+                            >
+                              {room.occupancyStatus}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">{room.renterAssigned}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-lg shadow-md p-6 mt-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Boarding House Review
+              </h2>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600">
+                  Loading boarding house reviews...
+                </p>
+              </div>
+            ) : boardingHouseReviews.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600">No boarding house reviews yet.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm text-center">
+                  <thead>
+                    <tr className="bg-gray-100 text-gray-700">
+                      <th className="px-3 py-2 text-center">Name of Renter</th>
+                      <th className="px-3 py-2 text-center">
+                        Boarding House Title
+                      </th>
+                      <th className="px-3 py-2 text-center">
+                        Boarding House Owner
+                      </th>
+                      <th className="px-3 py-2 text-center">Comment</th>
+                      <th className="px-3 py-2 text-center">Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {boardingHouseReviews.map((review) => (
+                      <tr key={review.id} className="border-b">
+                        <td className="px-3 py-2">{review.renterName}</td>
+                        <td className="px-3 py-2">
+                          {review.boardingHouseTitle}
+                        </td>
+                        <td className="px-3 py-2">
+                          {review.boardingHouseOwner}
+                        </td>
+                        <td className="px-3 py-2">{review.comment}</td>
+                        <td className="px-3 py-2">
+                          <span className="font-semibold text-yellow-600">
+                            {review.rating}/5
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  <span className="font-semibold">Overall Review:</span>{" "}
+                  {boardingHouseReviewSummary.average_rating}/5 from{" "}
+                  {boardingHouseReviewSummary.total_reviews} review
+                  {boardingHouseReviewSummary.total_reviews === 1 ? "" : "s"}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-lg shadow-md p-6 mt-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">
+                System Review
+              </h2>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600">Loading system reviews...</p>
+              </div>
+            ) : systemReviews.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600">No system reviews yet.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm text-center">
+                  <thead>
+                    <tr className="bg-gray-100 text-gray-700">
+                      <th className="px-3 py-2 text-center">Name</th>
+                      <th className="px-3 py-2 text-center">User Status</th>
+                      <th className="px-3 py-2 text-center">Comment</th>
+                      <th className="px-3 py-2 text-center">Ratings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {systemReviews.map((review) => (
+                      <tr key={`system-${review.id}`} className="border-b">
+                        <td className="px-3 py-2">{review.name}</td>
+                        <td className="px-3 py-2">
+                          {formatUserRole(review.role)}
+                        </td>
+                        <td className="px-3 py-2">{review.comment}</td>
+                        <td className="px-3 py-2">
+                          <span className="font-semibold text-yellow-600">
+                            {review.rating}/5
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  <span className="font-semibold">Overall Review:</span>{" "}
+                  {systemReviewSummary.average_rating}/5 from{" "}
+                  {systemReviewSummary.total_reviews} review
+                  {systemReviewSummary.total_reviews === 1 ? "" : "s"}
+                </div>
               </div>
             )}
           </div>

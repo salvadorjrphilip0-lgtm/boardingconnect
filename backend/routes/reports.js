@@ -3,6 +3,7 @@ import {
   generateUserActivityReport,
   generateListingVerificationReport,
   generateConcernsSummaryReport,
+  getMonthlyIncomeRecords,
   getAllReports,
   getReportDetail,
   deleteReport,
@@ -20,13 +21,16 @@ router.post("/generate/user-activity", generateUserActivityReport);
 
 router.post(
   "/generate/listing-verification",
-  generateListingVerificationReport
+  generateListingVerificationReport,
 );
 
 router.post("/generate/concerns-summary", generateConcernsSummaryReport);
 
 // Get reports
 router.get("/", getAllReports);
+
+// Monthly income records
+router.get("/monthly-income-records", getMonthlyIncomeRecords);
 
 router.get("/:report_id", getReportDetail);
 

@@ -10,6 +10,7 @@ import OwnerSidebar from "../components/OwnerSidebar";
 const CreateListingPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [showMapPreview, setShowMapPreview] = useState(false);
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -124,6 +125,14 @@ const CreateListingPage = () => {
     }
   };
 
+  const normalizedLocation = (formData.location || "").trim();
+  const mapQueryUrl = normalizedLocation
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(normalizedLocation)}`
+    : "";
+  const mapEmbedUrl = normalizedLocation
+    ? `https://www.google.com/maps?q=${encodeURIComponent(normalizedLocation)}&output=embed`
+    : "";
+
   return (
     <div className="min-h-screen bg-gray-50">
       <OwnerSidebar />
@@ -191,6 +200,42 @@ const CreateListingPage = () => {
                 required
               />
             </div>
+
+            <div className="mt-2 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowMapPreview((prev) => !prev)}
+                disabled={!normalizedLocation}
+                className="text-sm text-primary-600 hover:text-primary-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+              >
+                {showMapPreview
+                  ? "Hide map preview"
+                  : "Preview location on map"}
+              </button>
+
+              {normalizedLocation && (
+                <a
+                  href={mapQueryUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm text-blue-600 hover:text-blue-800 underline"
+                >
+                  Open in Google Maps
+                </a>
+              )}
+            </div>
+
+            {showMapPreview && normalizedLocation && (
+              <div className="mt-3 rounded-lg overflow-hidden border border-gray-200">
+                <iframe
+                  title="Location map preview"
+                  src={mapEmbedUrl}
+                  className="w-full h-72"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              </div>
+            )}
           </div>
 
           {/* Price and Capacity */}

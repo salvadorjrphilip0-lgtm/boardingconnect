@@ -7,7 +7,11 @@ import ListingCard from "../components/ListingCard";
 import toast from "react-hot-toast";
 import RenterSidebar from "../components/RenterSidebar";
 import OwnerSidebar from "../components/OwnerSidebar";
-import { Phone, User, X } from "lucide-react";
+import { Mail, Phone, User, X } from "lucide-react";
+import {
+  getPaymentStatusBadge,
+  getTimeStatusBadge,
+} from "../utils/renterStatus";
 
 const MyBoardingPage = () => {
   const { user } = useAuth();
@@ -30,68 +34,6 @@ const MyBoardingPage = () => {
       console.error("Failed to load agreements", err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const getStatusBadge = (agreement) => {
-    if (agreement.rent_status === "paid") {
-      return {
-        text: "Paid",
-        bgColor: "bg-green-100",
-        textColor: "text-green-700",
-        borderColor: "border-green-300",
-      };
-    }
-
-    if (agreement.rent_status === "cancelled") {
-      return {
-        text: "Cancelled",
-        bgColor: "bg-gray-100",
-        textColor: "text-gray-700",
-        borderColor: "border-gray-300",
-      };
-    }
-
-    if (!agreement.due_date) {
-      return {
-        text: "No Due Date",
-        bgColor: "bg-gray-100",
-        textColor: "text-gray-700",
-        borderColor: "border-gray-300",
-      };
-    }
-
-    const dueDate = new Date(agreement.due_date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    dueDate.setHours(0, 0, 0, 0);
-
-    const daysUntilDue = Math.floor((dueDate - today) / (1000 * 60 * 60 * 24));
-
-    if (daysUntilDue < 0) {
-      // Overdue (red)
-      return {
-        text: "Overdue",
-        bgColor: "bg-red-100",
-        textColor: "text-red-700",
-        borderColor: "border-red-300",
-      };
-    } else if (daysUntilDue <= 7) {
-      // Within 1 week (orange)
-      return {
-        text: `Due in ${daysUntilDue} days`,
-        bgColor: "bg-orange-100",
-        textColor: "text-orange-700",
-        borderColor: "border-orange-300",
-      };
-    } else {
-      // More than 1 week (green)
-      return {
-        text: "On Track",
-        bgColor: "bg-green-100",
-        textColor: "text-green-700",
-        borderColor: "border-green-300",
-      };
     }
   };
 
@@ -118,6 +60,14 @@ const MyBoardingPage = () => {
         {agreements.length > 0 ? (
           <div className="space-y-6">
             {agreements.map((agreement) => {
+              const paymentBadge = getPaymentStatusBadge(agreement);
+              const timeBadge = getTimeStatusBadge(agreement);
+              const isUnpaid = paymentBadge.text === "Unpaid";
+              const isOverdue = timeBadge.text
+                .toLowerCase()
+                .startsWith("overdue");
+              const shouldShowContactOwner = isUnpaid && isOverdue;
+
               return (
                 <div
                   key={agreement.id}
@@ -142,18 +92,20 @@ const MyBoardingPage = () => {
                         : "N/A"}
                     </p>
                     <div>
-                      {(() => {
-                        const badge = getStatusBadge(agreement);
-                        return (
-                          <span
-                            className={`inline-block px-3 py-1 rounded-full text-sm font-semibold border ${badge.bgColor} ${badge.textColor} ${badge.borderColor}`}
-                          >
-                            {badge.text}
-                          </span>
-                        );
-                      })()}
+                      <div className="flex flex-wrap gap-2">
+                        <span
+                          className={`inline-block px-3 py-1 rounded-full text-sm font-semibold border ${paymentBadge.bgColor} ${paymentBadge.textColor} ${paymentBadge.borderColor}`}
+                        >
+                          {paymentBadge.text}
+                        </span>
+                        <span
+                          className={`inline-block px-3 py-1 rounded-full text-sm font-semibold border ${timeBadge.bgColor} ${timeBadge.textColor} ${timeBadge.borderColor}`}
+                        >
+                          {timeBadge.text}
+                        </span>
+                      </div>
                     </div>
-                    {agreement.rent_status === "due" && (
+                    {shouldShowContactOwner && (
                       <button
                         className="btn-primary btn-sm w-max"
                         onClick={() => setSelectedOwner(agreement.owner)}
@@ -190,7 +142,27 @@ const MyBoardingPage = () => {
             </div>
 
             <div className="space-y-4">
-              <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-center p-4 bg-gray-50 rounded-lg">
+                {selectedOwner.profilePicture ||
+                selectedOwner.profile_picture ? (
+                  <img
+                    src={
+                      selectedOwner.profilePicture ||
+                      selectedOwner.profile_picture
+                    }
+                    alt={`${selectedOwner.fullName || selectedOwner.full_name || "Owner"}'s profile`}
+                    className="w-32 h-32 rounded-full object-cover border-2 border-gray-200"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300">
+                    {(selectedOwner.fullName || selectedOwner.full_name || "O")
+                      .charAt(0)
+                      .toUpperCase()}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center space-x-3 p-0 bg-gray-50 rounded-lg">
                 <User className="h-5 w-5 text-primary-600" />
                 <div>
                   <p className="text-sm text-gray-600">Owner Name</p>
@@ -200,12 +172,22 @@ const MyBoardingPage = () => {
                 </div>
               </div>
 
-              <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center space-x-3 p-0 bg-gray-50 rounded-lg">
                 <Phone className="h-5 w-5 text-primary-600" />
                 <div>
                   <p className="text-sm text-gray-600">Phone Number</p>
                   <p className="font-semibold text-gray-900">
                     {selectedOwner.phone || "N/A"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-3 p-0 bg-gray-50 rounded-lg">
+                <Mail className="h-5 w-5 text-primary-600" />
+                <div>
+                  <p className="text-sm text-gray-600">Email</p>
+                  <p className="font-semibold text-gray-900">
+                    {selectedOwner.email || "N/A"}
                   </p>
                 </div>
               </div>

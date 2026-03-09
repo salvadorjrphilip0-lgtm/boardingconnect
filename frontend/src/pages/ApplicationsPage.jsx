@@ -193,54 +193,75 @@ const ApplicationsPage = () => {
                             <User className="h-5 w-5 mr-2" />
                             Renter Details
                           </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="flex items-center">
-                              <User className="h-4 w-4 text-gray-500 mr-2" />
-                              <span className="text-sm">
-                                <span className="font-medium">Name:</span>{" "}
-                                {app.renter.full_name}
-                              </span>
-                            </div>
-                            <div className="flex items-center">
-                              <Mail className="h-4 w-4 text-gray-500 mr-2" />
-                              <span className="text-sm">
-                                <span className="font-medium">Email:</span>{" "}
-                                {app.renter.email}
-                              </span>
-                            </div>
-                            <div className="flex items-center">
-                              <Phone className="h-4 w-4 text-gray-500 mr-2" />
-                              <span className="text-sm">
-                                <span className="font-medium">Phone:</span>{" "}
-                                {app.renter.phone}
-                              </span>
-                            </div>
-                            <div className="flex items-center">
-                              <Shield className="h-4 w-4 text-gray-500 mr-2" />
-                              <span className="text-sm">
-                                <span className="font-medium">Verified:</span>{" "}
-                                <span
-                                  className={
-                                    app.renter.verified
-                                      ? "text-green-600"
-                                      : "text-red-600"
+                          <div className="flex items-start gap-4">
+                            <div className="shrink-0">
+                              {app.renter.profile_picture ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openImageModal(
+                                      app.renter.profile_picture,
+                                      0,
+                                      `${app.renter.full_name}'s profile`,
+                                    )
                                   }
+                                  className="rounded-full"
+                                  aria-label={`Open ${app.renter.full_name}'s profile picture`}
                                 >
-                                  {app.renter.verified ? "Yes" : "No"}
+                                  <img
+                                    src={app.renter.profile_picture}
+                                    alt={`${app.renter.full_name}'s profile`}
+                                    className="w-16 h-16 rounded-full object-cover border-2 border-gray-200 hover:opacity-90 transition-opacity cursor-pointer"
+                                  />
+                                </button>
+                              ) : (
+                                <div className="w-16 h-16 rounded-full bg-gray-200 border-2 border-gray-300 flex items-center justify-center text-gray-600 font-semibold text-lg">
+                                  {app.renter.full_name
+                                    ?.charAt(0)
+                                    ?.toUpperCase() || "R"}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="flex items-center">
+                                <User className="h-4 w-4 text-gray-500 mr-2" />
+                                <span className="text-sm">
+                                  <span className="font-medium">Name:</span>{" "}
+                                  {app.renter.full_name}
                                 </span>
-                              </span>
+                              </div>
+                              <div className="flex items-center">
+                                <Mail className="h-4 w-4 text-gray-500 mr-2" />
+                                <span className="text-sm">
+                                  <span className="font-medium">Email:</span>{" "}
+                                  {app.renter.email}
+                                </span>
+                              </div>
+                              <div className="flex items-center">
+                                <Phone className="h-4 w-4 text-gray-500 mr-2" />
+                                <span className="text-sm">
+                                  <span className="font-medium">Phone:</span>{" "}
+                                  {app.renter.phone}
+                                </span>
+                              </div>
+                              <div className="flex items-center">
+                                <Shield className="h-4 w-4 text-gray-500 mr-2" />
+                                <span className="text-sm">
+                                  <span className="font-medium">Verified:</span>{" "}
+                                  <span
+                                    className={
+                                      app.renter.verified
+                                        ? "text-green-600"
+                                        : "text-red-600"
+                                    }
+                                  >
+                                    {app.renter.verified ? "Yes" : "No"}
+                                  </span>
+                                </span>
+                              </div>
                             </div>
                           </div>
-
-                          {app.renter.profile_picture && (
-                            <div className="mt-3">
-                              <img
-                                src={app.renter.profile_picture}
-                                alt={`${app.renter.full_name}'s profile`}
-                                className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
-                              />
-                            </div>
-                          )}
                         </div>
                       )}
 

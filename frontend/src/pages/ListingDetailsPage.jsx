@@ -6,15 +6,15 @@ import {
   Home,
   Phone,
   Mail,
-  MessageSquare,
   CheckCircle,
   FileText,
 } from "lucide-react";
 import {
   listingService,
   agreementService,
-  messageService,
   applicationService,
+  reviewService,
+  ownerReviewService,
 } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 import Navbar from "../components/Navbar";
@@ -22,6 +22,7 @@ import Footer from "../components/Footer";
 import toast from "react-hot-toast";
 import RenterSidebar from "../components/RenterSidebar";
 import OwnerSidebar from "../components/OwnerSidebar";
+import { getRenterStatusBadge } from "../utils/renterStatus";
 
 const ListingDetailsPage = () => {
   const { id } = useParams();
@@ -38,10 +39,37 @@ const ListingDetailsPage = () => {
   // new state for agreements belonging to this listing (owner view)
   const [listingAgreements, setListingAgreements] = useState([]);
   const [loadingAgreements, setLoadingAgreements] = useState(false);
+  const [showLocationMap, setShowLocationMap] = useState(false);
+  const [reviews, setReviews] = useState([]);
+  const [reviewsSummary, setReviewsSummary] = useState({
+    average: 0,
+    total: 0,
+  });
+  const [loadingReviews, setLoadingReviews] = useState(false);
+  const [selectedReviewer, setSelectedReviewer] = useState(null);
+  const [showOwnerProfile, setShowOwnerProfile] = useState(false);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+
+  useEffect(() => {
+    if (!selectedReviewer) return;
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setSelectedReviewer(null);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedReviewer]);
 
   useEffect(() => {
     fetchListingDetails();
     checkIfApplied();
+    fetchListingReviews();
   }, [id, user]);
 
   useEffect(() => {
@@ -115,17 +143,26 @@ const ListingDetailsPage = () => {
     }
   };
 
-  const handleUpdateRentStatus = async (agreementId, rentStatus) => {
+  const fetchListingReviews = async () => {
     try {
-      await agreementService.updateStatus(agreementId, {
-        rent_status: rentStatus,
+      setLoadingReviews(true);
+      const data = await reviewService.getByListing(id);
+      const listingReviews = data?.reviews || [];
+      setReviews(listingReviews);
+      setReviewsSummary({
+        average: data?.average_rating || 0,
+        total: data?.total_reviews || listingReviews.length,
       });
-      toast.success("Rent status updated");
-      fetchListingAgreements();
-    } catch (err) {
-      toast.error("Failed to update rent status");
+    } catch (error) {
+      console.error("Failed to fetch listing reviews:", error);
+      setReviews([]);
+      setReviewsSummary({ average: 0, total: 0 });
+    } finally {
+      setLoadingReviews(false);
     }
   };
+
+  const getRenterStatus = (agreement) => getRenterStatusBadge(agreement);
 
   const handleApproveApplication = async (applicationId) => {
     try {
@@ -187,13 +224,43 @@ const ListingDetailsPage = () => {
     }
   };
 
-  const handleContactOwner = () => {
-    if (!user) {
-      toast.error("Please login to contact owner");
-      navigate("/login");
+  const handleSubmitOwnerReview = async () => {
+    if (!user || user.role !== "renter") {
+      toast.error("Only renters can submit a review");
       return;
     }
-    navigate("/messages", { state: { recipientId: listing.ownerId } });
+
+    if (reviewRating < 1 || reviewRating > 5) {
+      toast.error("Please select a rating from 1 to 5 stars");
+      return;
+    }
+
+    setSubmittingReview(true);
+    try {
+      const ownerId = listing.ownerId || listing.owner?.id;
+      if (!ownerId) {
+        toast.error("Owner information is not available for review");
+        setSubmittingReview(false);
+        return;
+      }
+
+      await ownerReviewService.create({
+        owner_id: ownerId,
+        listing_id: listing.id,
+        rating: reviewRating,
+        comment: reviewComment?.trim() || null,
+      });
+
+      toast.success("Review submitted successfully!");
+      setShowReviewForm(false);
+      setReviewRating(0);
+      setReviewComment("");
+      fetchListingReviews();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to submit review");
+    } finally {
+      setSubmittingReview(false);
+    }
   };
 
   if (loading) {
@@ -212,9 +279,16 @@ const ListingDetailsPage = () => {
     );
   }
 
+  const normalizedLocation = (listing.location || "").trim();
+  const mapQueryUrl = normalizedLocation
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(normalizedLocation)}`
+    : "";
+  const mapEmbedUrl = normalizedLocation
+    ? `https://www.google.com/maps?q=${encodeURIComponent(normalizedLocation)}&output=embed`
+    : "";
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar />
       {user && (user.role === "owner" ? <OwnerSidebar /> : <RenterSidebar />)}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -266,7 +340,23 @@ const ListingDetailsPage = () => {
                   </h1>
                   <div className="flex items-center text-gray-600">
                     <MapPin className="h-5 w-5 mr-1" />
-                    <span>{listing.location}</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowLocationMap((prev) => !prev)}
+                      className="text-left text-primary-700 hover:text-primary-900 underline"
+                    >
+                      {listing.location}
+                    </button>
+                    {mapQueryUrl && (
+                      <a
+                        href={mapQueryUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-2 text-sm text-blue-600 hover:text-blue-800 underline"
+                      >
+                        Open map
+                      </a>
+                    )}
                   </div>
                 </div>
                 {listing.status === "approved" || listing.verified ? (
@@ -314,6 +404,23 @@ const ListingDetailsPage = () => {
                 </p>
               </div>
 
+              {showLocationMap && mapEmbedUrl && (
+                <div className="mt-6">
+                  <h2 className="text-xl font-bold text-gray-900 mb-3">
+                    Location Map
+                  </h2>
+                  <div className="rounded-lg overflow-hidden border border-gray-200">
+                    <iframe
+                      title="Boarding house location map"
+                      src={mapEmbedUrl}
+                      className="w-full h-80"
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                    />
+                  </div>
+                </div>
+              )}
+
               {listing.amenities && listing.amenities.length > 0 && (
                 <div className="mt-6">
                   <h2 className="text-xl font-bold text-gray-900 mb-3">
@@ -332,6 +439,80 @@ const ListingDetailsPage = () => {
                   </div>
                 </div>
               )}
+
+              <div className="mt-8 pt-6 border-t">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-xl font-bold text-gray-900">Reviews</h2>
+                  <div className="text-sm text-gray-600">
+                    {reviewsSummary.total > 0
+                      ? `${reviewsSummary.average}/5 (${reviewsSummary.total} review${reviewsSummary.total > 1 ? "s" : ""})`
+                      : "No ratings yet"}
+                  </div>
+                </div>
+
+                {loadingReviews ? (
+                  <div className="py-4 text-center text-gray-600">
+                    <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+                  </div>
+                ) : reviews.length === 0 ? (
+                  <p className="text-gray-600 text-sm">
+                    No reviews yet. Reviews from renters will appear here.
+                  </p>
+                ) : (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {reviews.map((review) => (
+                      <div
+                        key={review.id}
+                        className="rounded-lg border border-gray-200 bg-white p-4"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-3">
+                            {review.users?.profile_picture ? (
+                              <img
+                                src={review.users.profile_picture}
+                                alt={`${review.users?.full_name || "Renter"} profile`}
+                                className="h-9 w-9 rounded-full object-cover border border-gray-200"
+                              />
+                            ) : (
+                              <div className="h-9 w-9 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-600 font-semibold">
+                                {(review.users?.full_name || "R")
+                                  .charAt(0)
+                                  .toUpperCase()}
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedReviewer({
+                                  fullName: review.users?.full_name || "Renter",
+                                  profilePicture:
+                                    review.users?.profile_picture || null,
+                                })
+                              }
+                              className="font-semibold text-gray-900 hover:text-primary-700 underline"
+                            >
+                              {review.users?.full_name || "Renter"}
+                            </button>
+                          </div>
+                          <p className="text-sm text-yellow-600 font-semibold">
+                            {"⭐".repeat(review.rating)} ({review.rating}/5)
+                          </p>
+                        </div>
+                        {review.comment ? (
+                          <p className="text-sm text-gray-700 whitespace-pre-line">
+                            {review.comment}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-gray-500">No comment</p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-2">
+                          {new Date(review.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -377,6 +558,16 @@ const ListingDetailsPage = () => {
                       <span className="text-sm">{listing.owner.phone}</span>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowOwnerProfile(true);
+                      setShowReviewForm(false);
+                    }}
+                    className="w-full mt-4 py-2 px-4 rounded font-semibold border border-primary-300 text-primary-700 hover:bg-primary-50 transition-colors"
+                  >
+                    Profile
+                  </button>
                 </div>
               )}
 
@@ -446,18 +637,6 @@ const ListingDetailsPage = () => {
                     Apply Now
                   </button>
                 )}
-
-                {/* Only show message button if user is not the owner */}
-                {!user || user.id !== listing.ownerId ? (
-                  <button
-                    onClick={handleContactOwner}
-                    disabled={!user}
-                    className="w-full btn-outline"
-                  >
-                    <MessageSquare className="inline h-5 w-5 mr-2" />
-                    Message Owner
-                  </button>
-                ) : null}
               </div>
 
               {/* Show renters list if user is the owner */}
@@ -617,38 +796,19 @@ const ListingDetailsPage = () => {
                               </div>
                               <div>
                                 <p className="text-sm text-gray-600">
-                                  Rent Status
+                                  Renter Status
                                 </p>
-                                <p className="font-semibold text-gray-900 capitalize">
-                                  {agr.rent_status}
-                                </p>
+                                {(() => {
+                                  const status = getRenterStatus(agr);
+                                  return (
+                                    <span
+                                      className={`inline-flex mt-1 items-center px-3 py-1 rounded-full text-sm font-semibold border ${status.color}`}
+                                    >
+                                      {status.text}
+                                    </span>
+                                  );
+                                })()}
                               </div>
-                            </div>
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={() =>
-                                  handleUpdateRentStatus(agr.id, "paid")
-                                }
-                                className="btn-primary btn-sm"
-                              >
-                                Mark Paid
-                              </button>
-                              <button
-                                onClick={() =>
-                                  handleUpdateRentStatus(agr.id, "due")
-                                }
-                                className="btn-secondary btn-sm"
-                              >
-                                Due
-                              </button>
-                              <button
-                                onClick={() =>
-                                  handleUpdateRentStatus(agr.id, "cancelled")
-                                }
-                                className="text-red-600 hover:text-red-800 text-sm"
-                              >
-                                Cancel
-                              </button>
                             </div>
                           </div>
                         ))}
@@ -669,6 +829,186 @@ const ListingDetailsPage = () => {
       </div>
 
       <Footer />
+
+      {selectedReviewer && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setSelectedReviewer(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Reviewer Profile
+            </h3>
+
+            <div className="flex items-center gap-4">
+              {selectedReviewer.profilePicture ? (
+                <img
+                  src={selectedReviewer.profilePicture}
+                  alt={`${selectedReviewer.fullName} profile`}
+                  className="h-16 w-16 rounded-full object-cover border border-gray-200"
+                />
+              ) : (
+                <div className="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center text-xl text-gray-700 font-semibold">
+                  {selectedReviewer.fullName.charAt(0).toUpperCase()}
+                </div>
+              )}
+
+              <div>
+                <p className="text-sm text-gray-500">Name</p>
+                <p className="font-semibold text-gray-900">
+                  {selectedReviewer.fullName}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedReviewer(null)}
+                className="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showOwnerProfile && listing?.owner && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setShowOwnerProfile(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl bg-white p-4 sm:p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Owner Profile
+            </h3>
+
+            <div className="flex flex-col items-center text-center gap-3">
+              {listing.owner.profilePicture || listing.owner.profile_picture ? (
+                <img
+                  src={
+                    listing.owner.profilePicture ||
+                    listing.owner.profile_picture
+                  }
+                  alt={`${listing.owner.fullName || listing.owner.full_name || "Owner"} profile`}
+                  className="h-40 w-40 rounded-full object-cover border border-gray-200"
+                />
+              ) : (
+                <div className="h-40 w-40 rounded-full bg-gray-200 flex items-center justify-center text-xl text-gray-700 font-semibold">
+                  {(listing.owner.fullName || listing.owner.full_name || "O")
+                    .charAt(0)
+                    .toUpperCase()}
+                </div>
+              )}
+
+              <div>
+                <p className="text-sm text-gray-500">Name</p>
+                <p className="font-semibold text-gray-900">
+                  {listing.owner.fullName || listing.owner.full_name || "N/A"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-10 space-y-2">
+              <div>
+                <p className="text-sm text-gray-500">Email</p>
+                <p className="font-medium text-gray-900">
+                  {listing.owner.email || "N/A"}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Number</p>
+                <p className="font-medium text-gray-900">
+                  {listing.owner.phone || "N/A"}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Title of Boarding House</p>
+                <p className="font-medium text-gray-900">
+                  {listing.title || "N/A"}
+                </p>
+              </div>
+            </div>
+
+            {showReviewForm && hasApplied && (
+              <div className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <p className="text-sm font-semibold text-gray-900 mb-2">
+                  Rate Owner
+                </p>
+
+                <div className="flex items-center gap-1 mb-3">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewRating(star)}
+                      className={`text-2xl leading-none transition-colors ${
+                        star <= reviewRating
+                          ? "text-yellow-500"
+                          : "text-gray-300 hover:text-yellow-400"
+                      }`}
+                      aria-label={`Rate ${star} star${star > 1 ? "s" : ""}`}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+
+                <label className="block text-sm text-gray-700 mb-1">
+                  Comment
+                </label>
+                <textarea
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  rows={3}
+                  placeholder="Write your comment..."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSubmitOwnerReview}
+                    disabled={submittingReview}
+                    className="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-60"
+                  >
+                    {submittingReview ? "Submitting..." : "Submit Review"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              {user &&
+                user.role === "renter" &&
+                user.id !== listing.ownerId &&
+                hasApplied && (
+                  <button
+                    type="button"
+                    onClick={() => setShowReviewForm((prev) => !prev)}
+                    className="px-4 py-2 rounded-lg border border-primary-300 text-primary-700 hover:bg-primary-50"
+                  >
+                    {showReviewForm ? "Cancel Review" : "Review"}
+                  </button>
+                )}
+              <button
+                type="button"
+                onClick={() => setShowOwnerProfile(false)}
+                className="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import { Home, MapPin, Users, Wifi, Car, Droplet } from "lucide-react";
+import { Home, MapPin, Users, Wifi, Car, Droplet, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { applicationService } from "../services/api";
@@ -7,6 +7,12 @@ import { useAuth } from "../contexts/AuthContext";
 const ListingCard = ({ listing }) => {
   const { user } = useAuth();
   const [hasApplied, setHasApplied] = useState(false);
+  const totalRatings = Number(listing.totalRatings) || 0;
+  const averageRatingRaw =
+    Number(listing.averageRating ?? listing.average_rating) || 0;
+  const averageRating = Number(averageRatingRaw.toFixed(1));
+  const roundedStars = Math.min(5, Math.max(0, Math.floor(averageRating)));
+  const visualStars = `${"★".repeat(roundedStars)}${"☆".repeat(5 - roundedStars)}`;
 
   useEffect(() => {
     checkIfApplied();
@@ -20,7 +26,7 @@ const ListingCard = ({ listing }) => {
     try {
       const applications = await applicationService.getByUser();
       const alreadyApplied = applications.some(
-        (app) => app.listing_id === listing.id
+        (app) => app.listing_id === listing.id,
       );
       setHasApplied(alreadyApplied);
     } catch (error) {
@@ -114,6 +120,17 @@ const ListingCard = ({ listing }) => {
               <Users className="h-4 w-4 mr-1" />
               <span>{listing.capacity} slots</span>
             </div>
+          </div>
+
+          <div className="flex items-center text-sm text-gray-600 mb-3">
+            <Star className="h-4 w-4 mr-1 text-yellow-500" />
+            <span className="text-yellow-500 mr-2" aria-hidden="true">
+              {visualStars}
+            </span>
+            <span>
+              {averageRating}/5 • {totalRatings} rating
+              {totalRatings !== 1 ? "s" : ""}
+            </span>
           </div>
 
           {/* Amenities */}

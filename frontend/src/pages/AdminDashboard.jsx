@@ -9,7 +9,12 @@ import {
   MapPin,
   // removed DollarSign - using Peso symbol instead
 } from "lucide-react";
-import { adminService, listingService } from "../services/api";
+import {
+  adminService,
+  listingService,
+  reviewService,
+  websiteReviewService,
+} from "../services/api";
 import AdminSidebar from "../components/AdminSidebar";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
@@ -24,16 +29,39 @@ const AdminDashboard = () => {
     totalListings: 0,
     pendingVerifications: 0,
   });
+  const [reviewStats, setReviewStats] = useState({
+    boardingHouse: {
+      total_reviews: 0,
+      average_rating: 0,
+      star_counts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+    },
+    system: {
+      total_reviews: 0,
+      average_rating: 0,
+    },
+  });
+  const [systemRoleRatings, setSystemRoleRatings] = useState({
+    renter: 0,
+    owner: 0,
+  });
   const [users, setUsers] = useState([]);
   const [listings, setListings] = useState([]);
   const [allListings, setAllListings] = useState([]);
 
-  // rental data for admin
-  const [agreements, setAgreements] = useState([]);
-  const [rentSummary, setRentSummary] = useState({ daily: {}, monthly: {} });
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, renters, listings
+  const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, listings
   const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [userReviewModalOpen, setUserReviewModalOpen] = useState(false);
+  const [selectedUserForReview, setSelectedUserForReview] = useState(null);
+  const [listingReviewModalOpen, setListingReviewModalOpen] = useState(false);
+  const [selectedListingForReview, setSelectedListingForReview] =
+    useState(null);
+  const [showListingLocationMap, setShowListingLocationMap] = useState(false);
+  const [listingMapPin, setListingMapPin] = useState(null);
+  const [listingMapLoading, setListingMapLoading] = useState(false);
+  const [listingMapError, setListingMapError] = useState("");
+  const [listingLocationOpeningId, setListingLocationOpeningId] =
+    useState(null);
   const [modalImageSrc, setModalImageSrc] = useState(null);
   const [modalImageAlt, setModalImageAlt] = useState("");
   const [modalImageList, setModalImageList] = useState([]);
@@ -94,13 +122,6 @@ const AdminDashboard = () => {
     fetchAdminData();
   }, []);
 
-  // when renter tab is selected we also load rental info
-  useEffect(() => {
-    if (activeTab === "renters") {
-      fetchRentalData();
-    }
-  }, [activeTab]);
-
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") setImageModalOpen(false);
@@ -144,6 +165,85 @@ const AdminDashboard = () => {
       } catch (err) {
         console.error("Failed to fetch listings for admin:", err);
       }
+
+      try {
+        const [boardingHouseReviewData, systemReviewData] = await Promise.all([
+          reviewService.getAll(1, 1000),
+          websiteReviewService.getAdminSummary(),
+        ]);
+
+        setReviewStats({
+          boardingHouse: {
+            total_reviews:
+              Number(boardingHouseReviewData?.pagination?.total) ||
+              (boardingHouseReviewData?.reviews || []).length ||
+              0,
+            average_rating:
+              Number(boardingHouseReviewData?.average_rating) || 0,
+            star_counts: boardingHouseReviewData?.star_counts || {
+              1: 0,
+              2: 0,
+              3: 0,
+              4: 0,
+              5: 0,
+            },
+          },
+          system: {
+            total_reviews:
+              Number(systemReviewData?.summary?.total_reviews) || 0,
+            average_rating:
+              Number(systemReviewData?.summary?.average_rating) || 0,
+          },
+        });
+
+        const systemReviewList = Array.isArray(systemReviewData?.reviews)
+          ? systemReviewData.reviews
+          : [];
+
+        const roleAggregates = systemReviewList.reduce(
+          (acc, review) => {
+            const role = String(review?.role || "").toLowerCase();
+            const rating = Number(review?.rating) || 0;
+
+            if (role === "renter") {
+              acc.renter.sum += rating;
+              acc.renter.count += 1;
+            }
+
+            if (role === "owner") {
+              acc.owner.sum += rating;
+              acc.owner.count += 1;
+            }
+
+            return acc;
+          },
+          {
+            renter: { sum: 0, count: 0 },
+            owner: { sum: 0, count: 0 },
+          },
+        );
+
+        setSystemRoleRatings({
+          renter:
+            roleAggregates.renter.count > 0
+              ? Number(
+                  (
+                    roleAggregates.renter.sum / roleAggregates.renter.count
+                  ).toFixed(1),
+                )
+              : 0,
+          owner:
+            roleAggregates.owner.count > 0
+              ? Number(
+                  (
+                    roleAggregates.owner.sum / roleAggregates.owner.count
+                  ).toFixed(1),
+                )
+              : 0,
+        });
+      } catch (err) {
+        console.error("Failed to fetch review insights:", err);
+      }
     } catch (error) {
       console.error("Failed to fetch admin data:", error);
     } finally {
@@ -151,21 +251,67 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchRentalData = async () => {
-    try {
-      const allAgreements = await adminService.getAgreements();
-      setAgreements(allAgreements);
-      const summary = await adminService.getSummary();
-      setRentSummary(summary);
-    } catch (err) {
-      console.error("Failed to fetch rental data:", err);
-    }
-  };
+  const totalReviewCount =
+    (reviewStats?.boardingHouse?.total_reviews || 0) +
+    (reviewStats?.system?.total_reviews || 0);
+
+  const boardingHouseStarRows = [1, 2, 3, 4, 5].map((star) => ({
+    star,
+    total: Number(reviewStats?.boardingHouse?.star_counts?.[star]) || 0,
+  }));
+
+  const maxBoardingHouseStarCount = Math.max(
+    ...boardingHouseStarRows.map((item) => item.total),
+    1,
+  );
+
+  const boardingHouseYAxisMax = Math.max(10, maxBoardingHouseStarCount);
+  const boardingHouseYAxisTicks = [1, 0.8, 0.6, 0.4, 0.2, 0].map((ratio) =>
+    Math.round(boardingHouseYAxisMax * ratio),
+  );
+
+  const systemRoleChartRows = [
+    {
+      label: "Renter",
+      rating: Number(systemRoleRatings?.renter) || 0,
+      color: "bg-emerald-500",
+    },
+    {
+      label: "Owner",
+      rating: Number(systemRoleRatings?.owner) || 0,
+      color: "bg-blue-500",
+    },
+  ];
+
+  const selectedListingLocation =
+    selectedListingForReview?.location?.trim?.() || "";
+  const selectedListingMapUrl = listingMapPin
+    ? `https://www.openstreetmap.org/?mlat=${listingMapPin.lat}&mlon=${listingMapPin.lon}#map=18/${listingMapPin.lat}/${listingMapPin.lon}`
+    : selectedListingLocation
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedListingLocation)}`
+      : "";
+
+  const selectedListingMapEmbedUrl = listingMapPin
+    ? (() => {
+        const lon = Number(listingMapPin.lon);
+        const lat = Number(listingMapPin.lat);
+        const delta = 0.005;
+        const left = lon - delta;
+        const right = lon + delta;
+        const top = lat + delta;
+        const bottom = lat - delta;
+        return `https://www.openstreetmap.org/export/embed.html?bbox=${left}%2C${bottom}%2C${right}%2C${top}&layer=mapnik&marker=${lat}%2C${lon}`;
+      })()
+    : selectedListingLocation
+      ? `https://www.google.com/maps?q=${encodeURIComponent(selectedListingLocation)}&output=embed`
+      : "";
 
   const handleVerifyUser = async (userId) => {
     try {
       await adminService.verifyUser(userId);
       toast.success("User verified successfully");
+      setUserReviewModalOpen(false);
+      setSelectedUserForReview(null);
       fetchAdminData();
     } catch (error) {
       toast.error("Failed to verify user");
@@ -176,6 +322,8 @@ const AdminDashboard = () => {
     try {
       await adminService.verifyListing(listingId);
       toast.success("Listing verified successfully");
+      setListingReviewModalOpen(false);
+      setSelectedListingForReview(null);
       fetchAdminData();
     } catch (error) {
       toast.error("Failed to verify listing");
@@ -197,9 +345,24 @@ const AdminDashboard = () => {
       // Admin can reject listings via adminService (mark as rejected)
       await adminService.rejectListing(listingId, reason || null);
       toast.success("Listing declined (marked rejected)");
+      setListingReviewModalOpen(false);
+      setSelectedListingForReview(null);
       fetchAdminData();
     } catch (error) {
       toast.error("Failed to decline listing");
+    }
+  };
+
+  const handleDeleteListing = async (listingId) => {
+    if (!confirm("Are you sure you want to delete this listing post?")) return;
+    try {
+      await listingService.delete(listingId);
+      toast.success("Listing post deleted successfully");
+      setListingReviewModalOpen(false);
+      setSelectedListingForReview(null);
+      fetchAdminData();
+    } catch (error) {
+      toast.error("Failed to delete listing post");
     }
   };
 
@@ -209,11 +372,137 @@ const AdminDashboard = () => {
     try {
       await adminService.deleteUser(userId);
       toast.success("User deleted successfully");
+      setUserReviewModalOpen(false);
+      setSelectedUserForReview(null);
       fetchAdminData();
     } catch (error) {
       toast.error("Failed to delete user");
     }
   };
+
+  const openUserReviewModal = (userData) => {
+    setSelectedUserForReview(userData);
+    setUserReviewModalOpen(true);
+  };
+
+  const closeUserReviewModal = () => {
+    setUserReviewModalOpen(false);
+    setSelectedUserForReview(null);
+  };
+
+  const openListingReviewModal = (listingData) => {
+    setShowListingLocationMap(false);
+    setListingMapPin(null);
+    setListingMapError("");
+    setListingMapLoading(false);
+    setSelectedListingForReview(listingData);
+    setListingReviewModalOpen(true);
+  };
+
+  const closeListingReviewModal = () => {
+    setShowListingLocationMap(false);
+    setListingMapPin(null);
+    setListingMapError("");
+    setListingMapLoading(false);
+    setListingReviewModalOpen(false);
+    setSelectedListingForReview(null);
+  };
+
+  const resolveListingPin = async (locationText) => {
+    const q = (locationText || "").trim();
+    if (!q) return null;
+
+    const endpoint = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`;
+    const response = await fetch(endpoint, {
+      headers: { Accept: "application/json" },
+    });
+
+    if (!response.ok) {
+      throw new Error("Unable to geocode location");
+    }
+
+    const data = await response.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      return null;
+    }
+
+    return {
+      lat: data[0].lat,
+      lon: data[0].lon,
+      displayName: data[0].display_name,
+    };
+  };
+
+  const handleOpenPinnedListingMap = async (listing) => {
+    const locationText = listing?.location?.trim?.();
+    if (!locationText) {
+      toast.error("No location available for this listing");
+      return;
+    }
+
+    setListingLocationOpeningId(listing.id);
+    try {
+      const pin = await resolveListingPin(locationText);
+      const pinnedUrl = pin
+        ? `https://www.openstreetmap.org/?mlat=${pin.lat}&mlon=${pin.lon}#map=18/${pin.lat}/${pin.lon}`
+        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`;
+
+      if (!pin) {
+        toast("Pinned location not found, opening map search instead.");
+      }
+
+      window.open(pinnedUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      console.error("Failed to open pinned listing location:", error);
+      const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`;
+      window.open(fallbackUrl, "_blank", "noopener,noreferrer");
+      toast.error("Could not resolve exact pin, opened map search instead");
+    } finally {
+      setListingLocationOpeningId(null);
+    }
+  };
+
+  useEffect(() => {
+    const geocodeIfNeeded = async () => {
+      if (
+        !listingReviewModalOpen ||
+        !showListingLocationMap ||
+        !selectedListingLocation ||
+        listingMapPin ||
+        listingMapLoading
+      ) {
+        return;
+      }
+
+      try {
+        setListingMapLoading(true);
+        setListingMapError("");
+        const pin = await resolveListingPin(selectedListingLocation);
+        if (pin) {
+          setListingMapPin(pin);
+        } else {
+          setListingMapError(
+            "Could not find an exact pin for this address. Showing text-based map fallback.",
+          );
+        }
+      } catch (e) {
+        console.error("Failed to resolve listing map pin:", e);
+        setListingMapError(
+          "Unable to resolve exact pinned location. Showing text-based map fallback.",
+        );
+      } finally {
+        setListingMapLoading(false);
+      }
+    };
+
+    geocodeIfNeeded();
+  }, [
+    listingReviewModalOpen,
+    showListingLocationMap,
+    selectedListingLocation,
+    listingMapPin,
+    listingMapLoading,
+  ]);
 
   const openImageModal = (listOrSrc, index = 0, altPrefix = "") => {
     // listOrSrc can be an array of urls or a single url
@@ -303,26 +592,6 @@ const AdminDashboard = () => {
               Dashboard
             </button>
             <button
-              onClick={() => setActiveTab("renters")}
-              className={`px-6 py-3 font-semibold ${
-                activeTab === "renters"
-                  ? "border-b-2 border-primary-600 text-primary-600"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              Renter's Account
-            </button>
-            <button
-              onClick={() => setActiveTab("owners")}
-              className={`px-6 py-3 font-semibold ${
-                activeTab === "owners"
-                  ? "border-b-2 border-primary-600 text-primary-600"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              BH Owners
-            </button>
-            <button
               onClick={() => setActiveTab("listings")}
               className={`px-6 py-3 font-semibold ${
                 activeTab === "listings"
@@ -381,9 +650,191 @@ const AdminDashboard = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-gray-600">Reports</p>
-                      <p className="text-3xl font-bold text-gray-900">0</p>
+                      <p className="text-3xl font-bold text-gray-900">
+                        {totalReviewCount}
+                      </p>
                     </div>
                     <BarChart className="h-12 w-12 text-green-600" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="card p-6 mb-8">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">
+                  Overall Reviews
+                </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                    <p className="text-sm text-gray-600">
+                      Overall Boarding House Reviews
+                    </p>
+                    <p className="text-3xl font-bold text-blue-700 mt-1">
+                      {reviewStats.boardingHouse.average_rating}/5
+                    </p>
+                    <p className="text-sm text-blue-800 mt-1">
+                      {reviewStats.boardingHouse.total_reviews} review
+                      {reviewStats.boardingHouse.total_reviews === 1 ? "" : "s"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                    <p className="text-sm text-gray-600">
+                      Overall System Reviews
+                    </p>
+                    <p className="text-3xl font-bold text-emerald-700 mt-1">
+                      {reviewStats.system.average_rating}/5
+                    </p>
+                    <p className="text-sm text-emerald-800 mt-1">
+                      {reviewStats.system.total_reviews} review
+                      {reviewStats.system.total_reviews === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 bg-white p-4">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-4">
+                    Overall Graph (Reviews)
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                      <p className="text-xs font-semibold text-gray-700 mb-3 text-center">
+                        Boarding House Reviews (1★ to 5★)
+                      </p>
+
+                      <div className="flex items-end gap-3">
+                        <div className="h-48 w-8 flex flex-col justify-between text-[10px] text-gray-500 text-right">
+                          {boardingHouseYAxisTicks.map((tick, idx) => (
+                            <span key={`bh-y-axis-${idx}`}>{tick}</span>
+                          ))}
+                        </div>
+
+                        <div className="flex-1 h-48 border-l border-b border-gray-300 px-4 pb-2">
+                          <div className="h-full flex items-end justify-around gap-3">
+                            {boardingHouseStarRows.map((item) => (
+                              <div
+                                key={`bh-star-${item.star}`}
+                                className="flex flex-col items-center justify-end h-full"
+                              >
+                                <div
+                                  className="w-10 rounded-t-md bg-blue-500 relative overflow-hidden"
+                                  style={{
+                                    height: `${Math.max(
+                                      8,
+                                      Math.round(
+                                        (item.total / boardingHouseYAxisMax) *
+                                          100,
+                                      ),
+                                    )}%`,
+                                  }}
+                                  title={`${item.star}★: ${item.total} renter review${item.total === 1 ? "" : "s"}`}
+                                >
+                                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-white">
+                                    {item.total}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex items-start gap-3">
+                        <div className="w-8" />
+                        <div className="flex-1 px-4">
+                          <div className="flex justify-around gap-3">
+                            {boardingHouseStarRows.map((item) => (
+                              <span
+                                key={`bh-star-x-${item.star}`}
+                                className="w-10 text-xs text-gray-600 text-center font-medium"
+                              >
+                                {item.star}★
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-1 pl-11 pr-4">
+                        <p className="text-[11px] text-gray-500 text-center">
+                          X-axis: Star Rate (1–5)
+                        </p>
+                      </div>
+
+                      <p className="text-[10px] text-gray-500 mt-2 text-center">
+                        Y-axis: Total Renters/Reviews
+                      </p>
+                    </div>
+
+                    <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                      <p className="text-xs font-semibold text-gray-700 mb-3 text-center">
+                        System Reviews (Renter vs Owner)
+                      </p>
+
+                      <div className="flex items-end gap-3">
+                        <div className="h-48 w-8 flex flex-col justify-between text-[10px] text-gray-500 text-right">
+                          <span>5</span>
+                          <span>4</span>
+                          <span>3</span>
+                          <span>2</span>
+                          <span>1</span>
+                          <span>0</span>
+                        </div>
+
+                        <div className="flex-1 h-48 border-l border-b border-gray-300 px-4 pb-2">
+                          <div className="h-full flex items-end justify-around gap-6">
+                            {systemRoleChartRows.map((item) => (
+                              <div
+                                key={item.label}
+                                className="flex flex-col items-center justify-end h-full"
+                              >
+                                <div
+                                  className={`w-16 rounded-t-md ${item.color} relative overflow-hidden`}
+                                  style={{
+                                    height: `${Math.max(
+                                      8,
+                                      Math.round((item.rating / 5) * 100),
+                                    )}%`,
+                                  }}
+                                  title={`${item.label} Rating: ${item.rating}/5`}
+                                >
+                                  <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-white">
+                                    {item.rating}/5
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex items-start gap-3">
+                        <div className="w-8" />
+                        <div className="flex-1 px-4">
+                          <div className="flex justify-around gap-6">
+                            {systemRoleChartRows.map((item) => (
+                              <span
+                                key={`system-x-${item.label}`}
+                                className="w-16 text-xs text-gray-600 text-center font-medium"
+                              >
+                                {item.label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-1 pl-12 pr-4">
+                        <p className="text-[10px] text-gray-500 text-center">
+                          X-axis: User Type (Renter, Owner)
+                        </p>
+                      </div>
+
+                      <p className="text-[10px] text-gray-500 mt-2 text-center">
+                        Y-axis: Total Rate (1–5)
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -446,19 +897,11 @@ const AdminDashboard = () => {
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                            {!user.verified && (
-                              <button
-                                onClick={() => handleVerifyUser(user.id)}
-                                className="text-green-600 hover:text-green-900"
-                              >
-                                Verify
-                              </button>
-                            )}
                             <button
-                              onClick={() => handleDeleteUser(user.id)}
-                              className="text-red-600 hover:text-red-900"
+                              onClick={() => openUserReviewModal(user)}
+                              className="text-primary-600 hover:text-primary-800"
                             >
-                              Delete
+                              Review Details
                             </button>
                           </td>
                         </tr>
@@ -491,16 +934,10 @@ const AdminDashboard = () => {
                           </div>
                           <div className="space-x-2">
                             <button
-                              onClick={() => handleVerifyListing(listing.id)}
-                              className="btn-primary text-sm"
+                              onClick={() => openListingReviewModal(listing)}
+                              className="text-primary-600 hover:text-primary-800 text-sm font-semibold"
                             >
-                              Verify Listing
-                            </button>
-                            <button
-                              onClick={() => handleDeclineListing(listing.id)}
-                              className="text-red-600 hover:text-red-900 text-sm"
-                            >
-                              Decline
+                              Review Details
                             </button>
                           </div>
                         </div>
@@ -514,347 +951,6 @@ const AdminDashboard = () => {
                 )}
               </div>
             </>
-          )}
-
-          {/* Renters Tab */}
-          {activeTab === "renters" && (
-            <div className="card p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">
-                Renters Account Details & Rentals
-              </h2>
-              {/* summary info */}
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold">Rental Summary</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
-                  <div>
-                    <strong>Daily</strong>
-                    <pre className="text-xs bg-gray-100 p-2 rounded">
-                      {" "}
-                      {JSON.stringify(rentSummary.daily, null, 2)}
-                    </pre>
-                  </div>
-                  <div>
-                    <strong>Monthly</strong>
-                    <pre className="text-xs bg-gray-100 p-2 rounded">
-                      {" "}
-                      {JSON.stringify(rentSummary.monthly, null, 2)}
-                    </pre>
-                  </div>
-                </div>
-              </div>
-
-              {users.filter((u) => u.role === "renter").length > 0 ? (
-                <>
-                  <div className="space-y-4">
-                    {users
-                      .filter((u) => u.role === "renter")
-                      .map((renter) => (
-                        <div
-                          key={renter.id}
-                          className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow"
-                        >
-                          <div className="grid md:grid-cols-4 gap-6">
-                            {/* ID Picture */}
-                            <div className="flex flex-col items-center">
-                              {renter.id_image || renter.id_image_path ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    openImageModal(
-                                      [renter.id_image || renter.id_image_path],
-                                      0,
-                                      `${renter.full_name} ID`,
-                                    )
-                                  }
-                                  className="mb-2"
-                                >
-                                  <img
-                                    src={
-                                      renter.id_image || renter.id_image_path
-                                    }
-                                    alt="ID"
-                                    className="w-32 h-40 object-cover rounded border border-gray-300"
-                                  />
-                                </button>
-                              ) : (
-                                <div className="w-32 h-40 bg-gray-200 rounded border border-gray-300 mb-2 flex items-center justify-center">
-                                  <span className="text-gray-500 text-sm">
-                                    No ID Image
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Details */}
-                            <div className="md:col-span-3">
-                              <div className="grid md:grid-cols-2 gap-4">
-                                {/* Name */}
-                                <div>
-                                  <p className="text-sm text-gray-600">Name</p>
-                                  <p className="font-semibold text-gray-900">
-                                    {renter.full_name || "N/A"}
-                                  </p>
-                                </div>
-
-                                {/* Email */}
-                                <div>
-                                  <p className="text-sm text-gray-600">Email</p>
-                                  <p className="font-semibold text-gray-900">
-                                    {renter.email || "N/A"}
-                                  </p>
-                                </div>
-
-                                {/* Phone */}
-                                <div>
-                                  <p className="text-sm text-gray-600">Phone</p>
-                                  <p className="font-semibold text-gray-900">
-                                    {renter.phone || "N/A"}
-                                  </p>
-                                </div>
-
-                                {/* ID Type */}
-                                <div>
-                                  <p className="text-sm text-gray-600">
-                                    ID Type
-                                  </p>
-                                  <p className="font-semibold text-gray-900">
-                                    {renter.id_type || "N/A"}
-                                  </p>
-                                </div>
-
-                                {/* ID Number */}
-                                <div>
-                                  <p className="text-sm text-gray-600">
-                                    ID Number
-                                  </p>
-                                  <p className="font-semibold text-gray-900">
-                                    {renter.id_number || "N/A"}
-                                  </p>
-                                </div>
-
-                                {/* Date Created */}
-                                <div>
-                                  <p className="text-sm text-gray-600">
-                                    Date Created
-                                  </p>
-                                  <p className="font-semibold text-gray-900">
-                                    {new Date(
-                                      renter.created_at,
-                                    ).toLocaleDateString()}
-                                  </p>
-                                </div>
-
-                                {/* Status */}
-                                <div>
-                                  <p className="text-sm text-gray-600">
-                                    Verification Status
-                                  </p>
-                                  {renter.verified ? (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                                      <CheckCircle className="h-3 w-3 mr-1" />
-                                      Verified
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
-                                      <XCircle className="h-3 w-3 mr-1" />
-                                      Pending
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-
-                  {agreements && agreements.length > 0 && (
-                    <div className="mt-8">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                        All Rental Agreements
-                      </h3>
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead>
-                            <tr>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Renter
-                              </th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Owner
-                              </th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Listing
-                              </th>
-                              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Rent Status
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {agreements.map((agr) => (
-                              <tr key={agr.id}>
-                                <td className="px-4 py-2 text-sm text-gray-700">
-                                  {agr.renter?.full_name || "-"}
-                                </td>
-                                <td className="px-4 py-2 text-sm text-gray-700">
-                                  {agr.owner?.full_name || "-"}
-                                </td>
-                                <td className="px-4 py-2 text-sm text-gray-700">
-                                  {agr.listing?.title || "-"}
-                                </td>
-                                <td className="px-4 py-2 text-sm text-gray-700 capitalize">
-                                  {agr.rent_status || "due"}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-gray-600 text-center py-8">
-                  No renter users found
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Owners Tab */}
-          {activeTab === "owners" && (
-            <div className="card p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">
-                BH Owners Account Details
-              </h2>
-              {users.filter((u) => u.role === "owner").length > 0 ? (
-                <div className="space-y-4">
-                  {users
-                    .filter((u) => u.role === "owner")
-                    .map((owner) => (
-                      <div
-                        key={owner.id}
-                        className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow"
-                      >
-                        <div className="grid md:grid-cols-4 gap-6">
-                          {/* ID Picture */}
-                          <div className="flex flex-col items-center">
-                            {owner.id_image || owner.id_image_path ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openImageModal(
-                                    [owner.id_image || owner.id_image_path],
-                                    0,
-                                    `${owner.full_name} ID`,
-                                  )
-                                }
-                                className="mb-2"
-                              >
-                                <img
-                                  src={owner.id_image || owner.id_image_path}
-                                  alt="ID"
-                                  className="w-32 h-40 object-cover rounded border border-gray-300"
-                                />
-                              </button>
-                            ) : (
-                              <div className="w-32 h-40 bg-gray-200 rounded border border-gray-300 mb-2 flex items-center justify-center">
-                                <span className="text-gray-500 text-sm">
-                                  No ID Image
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Details */}
-                          <div className="md:col-span-3">
-                            <div className="grid md:grid-cols-2 gap-4">
-                              {/* Name */}
-                              <div>
-                                <p className="text-sm text-gray-600">Name</p>
-                                <p className="font-semibold text-gray-900">
-                                  {owner.full_name || "N/A"}
-                                </p>
-                              </div>
-
-                              {/* Email */}
-                              <div>
-                                <p className="text-sm text-gray-600">Email</p>
-                                <p className="font-semibold text-gray-900">
-                                  {owner.email || "N/A"}
-                                </p>
-                              </div>
-
-                              {/* Phone */}
-                              <div>
-                                <p className="text-sm text-gray-600">Phone</p>
-                                <p className="font-semibold text-gray-900">
-                                  {owner.phone || "N/A"}
-                                </p>
-                              </div>
-
-                              {/* ID Type */}
-                              <div>
-                                <p className="text-sm text-gray-600">ID Type</p>
-                                <p className="font-semibold text-gray-900">
-                                  {owner.id_type || "N/A"}
-                                </p>
-                              </div>
-
-                              {/* ID Number */}
-                              <div>
-                                <p className="text-sm text-gray-600">
-                                  ID Number
-                                </p>
-                                <p className="font-semibold text-gray-900">
-                                  {owner.id_number || "N/A"}
-                                </p>
-                              </div>
-
-                              {/* Date Created */}
-                              <div>
-                                <p className="text-sm text-gray-600">
-                                  Date Created
-                                </p>
-                                <p className="font-semibold text-gray-900">
-                                  {owner.created_at
-                                    ? new Date(
-                                        owner.created_at,
-                                      ).toLocaleDateString()
-                                    : "-"}
-                                </p>
-                              </div>
-
-                              {/* Status */}
-                              <div>
-                                <p className="text-sm text-gray-600">
-                                  Verification Status
-                                </p>
-                                {owner.verified ? (
-                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                                    <CheckCircle className="h-3 w-3 mr-1" />
-                                    Verified
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
-                                    <XCircle className="h-3 w-3 mr-1" />
-                                    Pending
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              ) : (
-                <p className="text-gray-600 text-center py-8">
-                  No owner users found
-                </p>
-              )}
-            </div>
           )}
 
           {/* Listings Tab */}
@@ -934,9 +1030,18 @@ const AdminDashboard = () => {
                               <MapPin className="h-4 w-4 mr-1" />
                               Location
                             </p>
-                            <p className="font-semibold text-gray-900">
-                              {listing.location}
-                            </p>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleOpenPinnedListingMap(listing)
+                              }
+                              disabled={listingLocationOpeningId === listing.id}
+                              className="font-semibold text-primary-700 hover:text-primary-900 underline disabled:text-gray-500 disabled:no-underline"
+                            >
+                              {listingLocationOpeningId === listing.id
+                                ? "Locating pinned map..."
+                                : listing.location}
+                            </button>
                           </div>
 
                           {/* Price */}
@@ -1016,6 +1121,376 @@ const AdminDashboard = () => {
         <Footer />
       </div>
       {/* Image Lightbox Modal */}
+      {userReviewModalOpen && selectedUserForReview && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={closeUserReviewModal}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">User Review</h3>
+              <button
+                type="button"
+                onClick={closeUserReviewModal}
+                className="text-gray-500 hover:text-gray-800"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 grid md:grid-cols-3 gap-6">
+              <div className="md:col-span-1">
+                {selectedUserForReview.id_image ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openImageModal(
+                        [selectedUserForReview.id_image],
+                        0,
+                        `${selectedUserForReview.full_name || "User"} ID`,
+                      )
+                    }
+                  >
+                    <img
+                      src={selectedUserForReview.id_image}
+                      alt="Uploaded ID"
+                      className="w-36 h-48 object-cover rounded border border-gray-300"
+                    />
+                  </button>
+                ) : (
+                  <div className="w-36 h-48 bg-gray-100 rounded border border-gray-300 flex items-center justify-center text-gray-500 text-sm">
+                    No ID uploaded
+                  </div>
+                )}
+              </div>
+
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-gray-600">Name</p>
+                  <p className="font-semibold text-gray-900">
+                    {selectedUserForReview.full_name || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Email</p>
+                  <p className="font-semibold text-gray-900">
+                    {selectedUserForReview.email || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Phone</p>
+                  <p className="font-semibold text-gray-900">
+                    {selectedUserForReview.phone || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Role</p>
+                  <p className="font-semibold text-gray-900 capitalize">
+                    {selectedUserForReview.role || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">ID Type</p>
+                  <p className="font-semibold text-gray-900">
+                    {selectedUserForReview.id_type || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">ID Number</p>
+                  <p className="font-semibold text-gray-900">
+                    {selectedUserForReview.id_number || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Date Registered</p>
+                  <p className="font-semibold text-gray-900">
+                    {selectedUserForReview.created_at
+                      ? new Date(
+                          selectedUserForReview.created_at,
+                        ).toLocaleDateString()
+                      : "-"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Verification</p>
+                  {selectedUserForReview.verified ? (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Verified
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                      <XCircle className="h-3 w-3 mr-1" />
+                      Pending
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+              {!selectedUserForReview.verified && (
+                <button
+                  type="button"
+                  onClick={() => handleVerifyUser(selectedUserForReview.id)}
+                  className="btn-primary"
+                >
+                  Verify User
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleDeleteUser(selectedUserForReview.id)}
+                className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700"
+              >
+                Delete User
+              </button>
+              <button
+                type="button"
+                onClick={closeUserReviewModal}
+                className="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Listing Review Modal */}
+      {listingReviewModalOpen && selectedListingForReview && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={closeListingReviewModal}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-gray-900">
+                Listing Review
+              </h3>
+              <button
+                type="button"
+                onClick={closeListingReviewModal}
+                className="text-gray-500 hover:text-gray-800"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div>
+                <h4 className="text-xl font-bold text-gray-900">
+                  {selectedListingForReview.title || "Untitled Listing"}
+                </h4>
+                <div className="text-sm text-gray-600 mt-1 flex items-center gap-2 flex-wrap">
+                  <MapPin className="h-4 w-4" />
+                  <button
+                    type="button"
+                    onClick={() => setShowListingLocationMap((prev) => !prev)}
+                    className="text-primary-700 hover:text-primary-900 underline text-left"
+                    disabled={!selectedListingLocation}
+                  >
+                    {selectedListingForReview.location || "No location"}
+                  </button>
+                  {selectedListingMapUrl && (
+                    <a
+                      href={selectedListingMapUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Open map
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {showListingLocationMap && selectedListingMapEmbedUrl && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Location Map</p>
+                  {listingMapLoading && (
+                    <p className="text-xs text-gray-500 mb-2">
+                      Resolving pinned location...
+                    </p>
+                  )}
+                  {listingMapError && (
+                    <p className="text-xs text-amber-600 mb-2">
+                      {listingMapError}
+                    </p>
+                  )}
+                  {listingMapPin?.displayName && (
+                    <p className="text-xs text-gray-500 mb-2">
+                      Pinned: {listingMapPin.displayName}
+                    </p>
+                  )}
+                  <div className="rounded-lg overflow-hidden border border-gray-200">
+                    <iframe
+                      title="Listing location map"
+                      src={selectedListingMapEmbedUrl}
+                      className="w-full h-72"
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {((selectedListingForReview.images || []).length > 0 ||
+                (selectedListingForReview.images_paths || []).length > 0) && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Listing Images</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {((selectedListingForReview.images || []).length > 0
+                      ? selectedListingForReview.images
+                      : selectedListingForReview.images_paths || []
+                    ).map((img, idx, arr) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() =>
+                          openImageModal(
+                            arr,
+                            idx,
+                            selectedListingForReview.title,
+                          )
+                        }
+                        className="block overflow-hidden rounded"
+                      >
+                        <img
+                          src={img}
+                          alt={`${selectedListingForReview.title} - ${idx + 1}`}
+                          className="w-full h-28 object-cover rounded hover:scale-105 transition-transform"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-gray-600">Owner</p>
+                  <p className="font-semibold text-gray-900">
+                    {resolveOwnerName(selectedListingForReview)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Price</p>
+                  <p className="font-semibold text-gray-900">
+                    ₱{selectedListingForReview.price || 0}/month
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Available Slots</p>
+                  <p className="font-semibold text-gray-900">
+                    {selectedListingForReview.capacity ?? "-"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Date Created</p>
+                  <p className="font-semibold text-gray-900">
+                    {formatListingDate(selectedListingForReview)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Status</p>
+                  <p className="font-semibold text-gray-900 capitalize">
+                    {selectedListingForReview.status ||
+                      (selectedListingForReview.verified
+                        ? "approved"
+                        : "pending")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Verification</p>
+                  {selectedListingForReview.verified ? (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Verified
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                      <XCircle className="h-3 w-3 mr-1" />
+                      Pending
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Description</p>
+                <p className="text-gray-900 whitespace-pre-line">
+                  {selectedListingForReview.description || "No description"}
+                </p>
+              </div>
+
+              {selectedListingForReview.amenities?.length > 0 && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Amenities</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedListingForReview.amenities.map((amenity, i) => (
+                      <span
+                        key={i}
+                        className="inline-block px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold"
+                      >
+                        {amenity}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+              {!selectedListingForReview.verified && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleVerifyListing(selectedListingForReview.id)
+                  }
+                  className="btn-primary"
+                >
+                  Verify Listing
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() =>
+                  handleDeclineListing(selectedListingForReview.id)
+                }
+                className="px-4 py-2 rounded-md bg-yellow-600 text-white hover:bg-yellow-700"
+              >
+                Decline Listing
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteListing(selectedListingForReview.id)}
+                className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700"
+              >
+                Delete Post
+              </button>
+              <button
+                type="button"
+                onClick={closeListingReviewModal}
+                className="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {imageModalOpen && (
         <div
           className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"

@@ -3,6 +3,33 @@ import jwt from "jsonwebtoken";
 import { validationResult } from "express-validator";
 import { supabase } from "../config/supabase.js";
 
+const AVATAR_BUCKET = "avatars";
+const AVATAR_MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+const ensureAvatarBucket = async () => {
+  const { data: buckets, error: listError } =
+    await supabase.storage.listBuckets();
+  if (listError) throw listError;
+
+  const exists = Array.isArray(buckets)
+    ? buckets.some((bucket) => bucket.name === AVATAR_BUCKET)
+    : false;
+
+  if (!exists) {
+    const { error: createError } = await supabase.storage.createBucket(
+      AVATAR_BUCKET,
+      {
+        public: true,
+        fileSizeLimit: AVATAR_MAX_FILE_SIZE,
+      },
+    );
+
+    if (createError) {
+      throw createError;
+    }
+  }
+};
+
 // Register new user
 export const register = async (req, res) => {
   try {
@@ -291,19 +318,24 @@ export const uploadAvatar = async (req, res) => {
         .json({ message: "imageBase64 and fileName are required" });
     }
 
-    // Decode base64
-    const buffer = Buffer.from(imageBase64, "base64");
+    // Decode base64 (supports raw base64 and data URL format)
+    const base64Payload = imageBase64.includes(",")
+      ? imageBase64.split(",").pop()
+      : imageBase64;
+    const buffer = Buffer.from(base64Payload, "base64");
     const path = `avatars/${req.user.id}/${Date.now()}_${fileName}`;
+
+    await ensureAvatarBucket();
 
     // Upload to Supabase Storage (bucket: avatars)
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("avatars")
+      .from(AVATAR_BUCKET)
       .upload(path, buffer, { contentType: "image/jpeg", upsert: true });
 
     if (uploadError) throw uploadError;
 
     const { data: publicData } = await supabase.storage
-      .from("avatars")
+      .from(AVATAR_BUCKET)
       .getPublicUrl(path);
 
     const publicUrl = publicData?.publicUrl || publicData?.publicURL || null;
@@ -332,7 +364,9 @@ export const uploadAvatar = async (req, res) => {
     });
   } catch (error) {
     console.error("Upload avatar error:", error);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({
+      message: error?.message || "Failed to upload avatar",
+    });
   }
 };
 
@@ -343,7 +377,7 @@ export const uploadAvatarMultipart = async (req, res) => {
       return res.status(400).json({ message: "No file provided" });
     }
 
-    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    const MAX_FILE_SIZE = AVATAR_MAX_FILE_SIZE;
     const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
     // Validate file size
@@ -365,9 +399,11 @@ export const uploadAvatarMultipart = async (req, res) => {
 
     const path = `avatars/${req.user.id}/${Date.now()}_${fileName}`;
 
+    await ensureAvatarBucket();
+
     // Upload to Supabase Storage (bucket: avatars)
     const { error: uploadError } = await supabase.storage
-      .from("avatars")
+      .from(AVATAR_BUCKET)
       .upload(path, req.file.buffer, {
         contentType: req.file.mimetype,
         upsert: true,
@@ -376,7 +412,7 @@ export const uploadAvatarMultipart = async (req, res) => {
     if (uploadError) throw uploadError;
 
     const { data: publicData } = await supabase.storage
-      .from("avatars")
+      .from(AVATAR_BUCKET)
       .getPublicUrl(path);
     const publicUrl = publicData?.publicUrl || publicData?.publicURL || null;
 
@@ -404,6 +440,8 @@ export const uploadAvatarMultipart = async (req, res) => {
     });
   } catch (error) {
     console.error("Upload avatar multipart error:", error);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({
+      message: error?.message || "Failed to upload avatar",
+    });
   }
 };

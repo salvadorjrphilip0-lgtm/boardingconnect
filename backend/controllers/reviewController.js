@@ -24,6 +24,24 @@ export const createReview = async (req, res) => {
       return res.status(404).json({ message: "Listing not found" });
     }
 
+    // Only allow reviews from renters who have an accepted/active agreement
+    const { data: agreement, error: agreementError } = await supabase
+      .from("agreements")
+      .select("id, status")
+      .eq("listing_id", listing_id)
+      .eq("renter_id", renter_id)
+      .in("status", ["confirmed", "active"])
+      .maybeSingle();
+
+    if (agreementError) throw agreementError;
+
+    if (!agreement) {
+      return res.status(403).json({
+        message:
+          "You can only review a boarding house after confirming your agreement",
+      });
+    }
+
     // Check if renter has already reviewed this listing
     const { data: existingReview } = await supabase
       .from("reviews")
@@ -81,7 +99,7 @@ export const getListingReviews = async (req, res) => {
         comment,
         created_at,
         users:renter_id (id, full_name, profile_picture)
-      `
+      `,
       )
       .eq("listing_id", listing_id)
       .order("created_at", { ascending: false });
@@ -93,7 +111,7 @@ export const getListingReviews = async (req, res) => {
       average_rating:
         data.length > 0
           ? (data.reduce((sum, r) => sum + r.rating, 0) / data.length).toFixed(
-              1
+              1,
             )
           : 0,
       total_reviews: data.length,
@@ -201,10 +219,10 @@ export const getAllReviews = async (req, res) => {
         title,
         comment,
         created_at,
-        users:renter_id (id, full_name),
-        listings:listing_id (id, title)
+        users:renter_id (id, full_name, profile_picture),
+        listings:listing_id (id, title, owner:owner_id(id, full_name))
       `,
-      { count: "exact" }
+      { count: "exact" },
     );
 
     if (listing_id) {
@@ -217,8 +235,42 @@ export const getAllReviews = async (req, res) => {
 
     if (error) throw error;
 
+    // Compute weighted average from total 1★-5★ counts (across all matched reviews)
+    let ratingsQuery = supabase.from("reviews").select("rating");
+    if (listing_id) {
+      ratingsQuery = ratingsQuery.eq("listing_id", listing_id);
+    }
+
+    const { data: allRatings, error: ratingsError } = await ratingsQuery;
+    if (ratingsError) throw ratingsError;
+
+    const star_counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    let weightedTotal = 0;
+
+    (allRatings || []).forEach((row) => {
+      const rating = Number(row?.rating);
+      if (rating >= 1 && rating <= 5) {
+        star_counts[rating] += 1;
+        weightedTotal += rating;
+      }
+    });
+
+    const totalReviewsFromStars =
+      star_counts[1] +
+      star_counts[2] +
+      star_counts[3] +
+      star_counts[4] +
+      star_counts[5];
+
+    const average_rating =
+      totalReviewsFromStars > 0
+        ? Number((weightedTotal / totalReviewsFromStars).toFixed(1))
+        : 0;
+
     res.json({
       reviews: data,
+      average_rating,
+      star_counts,
       pagination: {
         page,
         limit,

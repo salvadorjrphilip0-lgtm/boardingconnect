@@ -19,7 +19,6 @@ import ListingsPage from "./pages/ListingsPage";
 import CreateListingPage from "./pages/CreateListingPage";
 import EditListingPage from "./pages/EditListingPage";
 import ListingDetailsPage from "./pages/ListingDetailsPage";
-import MessagesPage from "./pages/MessagesPage";
 import ApplicationsPage from "./pages/ApplicationsPage";
 import AgreementsPage from "./pages/AgreementsPage";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -27,6 +26,7 @@ import ProfilePage from "./pages/ProfilePage";
 import ReviewsPage from "./pages/ReviewsPage";
 import ConcernsPage from "./pages/ConcernsPage";
 import ReportsPage from "./pages/ReportsPage";
+import RecordsPage from "./pages/RecordsPage";
 import MyBoardingPage from "./pages/MyBoardingPage";
 import OwnerRentersPage from "./pages/OwnerRentersPage";
 
@@ -86,14 +86,6 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["owner"]}>
                   <EditListingPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/messages"
-              element={
-                <ProtectedRoute>
-                  <MessagesPage />
                 </ProtectedRoute>
               }
             />
@@ -158,6 +150,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
                   <ReportsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/records"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <RecordsPage />
                 </ProtectedRoute>
               }
             />

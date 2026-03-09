@@ -10,9 +10,11 @@ import agreementRoutes from "./routes/agreements.js";
 import messageRoutes from "./routes/messages.js";
 import adminRoutes from "./routes/admin.js";
 import reviewRoutes from "./routes/reviews.js";
+import ownerReviewRoutes from "./routes/ownerReviews.js";
 import concernRoutes from "./routes/concerns.js";
 import reportRoutes from "./routes/reports.js";
 import statsRoutes from "./routes/stats.js";
+import websiteReviewRoutes from "./routes/websiteReviews.js";
 
 dotenv.config();
 
@@ -24,7 +26,7 @@ app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:3000",
     credentials: true,
-  })
+  }),
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -37,9 +39,11 @@ app.use("/api/agreements", agreementRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/reviews", reviewRoutes);
+app.use("/api/owner-reviews", ownerReviewRoutes);
 app.use("/api/concerns", concernRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/stats", statsRoutes);
+app.use("/api/website-reviews", websiteReviewRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

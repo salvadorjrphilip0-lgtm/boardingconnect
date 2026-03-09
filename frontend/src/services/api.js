@@ -386,6 +386,19 @@ export const reviewService = {
   },
 };
 
+// Owner Review Services (separate from listing reviews)
+export const ownerReviewService = {
+  create: async (reviewData) => {
+    const response = await api.post("/owner-reviews", reviewData);
+    return response.data;
+  },
+
+  getByOwner: async (ownerId) => {
+    const response = await api.get(`/owner-reviews/${ownerId}`);
+    return response.data;
+  },
+};
+
 // Concern Services
 export const concernService = {
   create: async (concernData) => {
@@ -415,6 +428,14 @@ export const concernService = {
   respond: async (concernId, responseData) => {
     const response = await api.patch(
       `/concerns/${concernId}/respond`,
+      responseData,
+    );
+    return response.data;
+  },
+
+  renterReply: async (concernId, responseData) => {
+    const response = await api.patch(
+      `/concerns/${concernId}/renter-reply`,
       responseData,
     );
     return response.data;
@@ -466,6 +487,31 @@ export const reportService = {
 
   delete: async (reportId) => {
     const response = await api.delete(`/reports/${reportId}`);
+    return response.data;
+  },
+
+  getMonthlyIncomeRecords: async (page = 1, limit = 500) => {
+    const response = await api.get("/reports/monthly-income-records", {
+      params: { page, limit },
+    });
+    return response.data;
+  },
+};
+
+// Website Review Services
+export const websiteReviewService = {
+  submit: async (reviewData) => {
+    const response = await api.post("/website-reviews", reviewData);
+    return response.data;
+  },
+
+  getMine: async () => {
+    const response = await api.get("/website-reviews/me");
+    return response.data;
+  },
+
+  getAdminSummary: async () => {
+    const response = await api.get("/website-reviews/admin/summary");
     return response.data;
   },
 };

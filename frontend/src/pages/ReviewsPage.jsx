@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { reviewService } from "../services/api";
+import { reviewService, websiteReviewService } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "react-hot-toast";
 import AdminSidebar from "../components/AdminSidebar";
+import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
 export default function ReviewsPage() {
@@ -12,6 +13,25 @@ export default function ReviewsPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [selectedReviewer, setSelectedReviewer] = useState(null);
+  const [websiteSummary, setWebsiteSummary] = useState({
+    total_reviews: 0,
+    average_rating: 0,
+  });
+  const [websiteReviews, setWebsiteReviews] = useState([]);
+
+  useEffect(() => {
+    if (!selectedReviewer) return;
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setSelectedReviewer(null);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedReviewer]);
 
   useEffect(() => {
     fetchAllReviews();
@@ -20,11 +40,21 @@ export default function ReviewsPage() {
   const fetchAllReviews = async () => {
     try {
       setLoading(true);
-      // This endpoint requires admin role
-      const data = await reviewService.getAll(page, 20);
+      // These endpoints require admin role
+      const [data, websiteData] = await Promise.all([
+        reviewService.getAll(page, 20),
+        websiteReviewService.getAdminSummary(),
+      ]);
+
       setReviews(data.reviews || []);
-      setAverageRating(data.average_rating || 0);
+      setAverageRating(Number(data.average_rating) || 0);
       setTotalPages(Math.ceil((data.pagination?.total || 0) / 20));
+
+      setWebsiteSummary({
+        total_reviews: websiteData?.summary?.total_reviews || 0,
+        average_rating: Number(websiteData?.summary?.average_rating) || 0,
+      });
+      setWebsiteReviews(websiteData?.reviews || []);
     } catch (error) {
       console.error("Error fetching reviews:", error);
       toast.error("Failed to load reviews");
@@ -72,15 +102,13 @@ export default function ReviewsPage() {
 
         <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
           <div className="bg-white rounded-lg shadow-md p-6">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              All Reviews
-            </h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Reviews</h1>
             <p className="text-gray-600 mb-6">
               Manage and monitor all system reviews
             </p>
 
             {/* Summary Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
               <div className="bg-blue-50 p-4 rounded-lg">
                 <p className="text-sm text-gray-600">Total Reviews</p>
                 <p className="text-3xl font-bold text-blue-600">
@@ -99,6 +127,69 @@ export default function ReviewsPage() {
                   {page}/{totalPages}
                 </p>
               </div>
+              <div className="bg-orange-50 p-4 rounded-lg">
+                <p className="text-sm text-gray-600">Website Reviews</p>
+                <p className="text-3xl font-bold text-orange-600">
+                  {websiteSummary.total_reviews}
+                </p>
+              </div>
+              <div className="bg-teal-50 p-4 rounded-lg">
+                <p className="text-sm text-gray-600">Website Avg Rating</p>
+                <p className="text-3xl font-bold text-teal-600">
+                  {websiteSummary.average_rating}/5
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-8">
+              <h2 className="text-xl font-bold text-gray-900 mb-3">
+                Website Rating Reviews
+              </h2>
+              {websiteReviews.length === 0 ? (
+                <div className="border border-gray-200 rounded-lg p-4 text-gray-600">
+                  No website reviews submitted yet.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {websiteReviews.map((review) => (
+                    <div
+                      key={`website-${review.id}`}
+                      className="border border-gray-200 rounded-lg p-4 bg-gray-50"
+                    >
+                      <div className="flex justify-between items-start gap-4">
+                        <div>
+                          <p className="font-semibold text-gray-900">
+                            {review.full_name}
+                          </p>
+                          <p className="text-xs text-gray-500 uppercase">
+                            {review.role}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold text-yellow-500">
+                            {"⭐".repeat(review.rating)}
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            {review.rating}/5
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-gray-700 mt-2">{review.comment}</p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        {review.reviewed_at
+                          ? new Date(review.reviewed_at).toLocaleDateString()
+                          : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mb-4">
+              <h2 className="text-xl font-bold text-gray-900">
+                Boarding House Reviews
+              </h2>
             </div>
 
             {/* Reviews List */}
@@ -118,13 +209,39 @@ export default function ReviewsPage() {
                     className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50"
                   >
                     <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className="font-semibold text-gray-900">
-                          {review.title || "Untitled Review"}
-                        </h3>
-                        <p className="text-sm text-gray-600">
-                          By: {review.users?.full_name || "Unknown User"}
-                        </p>
+                      <div className="flex items-start gap-3">
+                        {review.users?.profile_picture ? (
+                          <img
+                            src={review.users.profile_picture}
+                            alt={`${review.users?.full_name || "Renter"} profile`}
+                            className="h-10 w-10 rounded-full object-cover border border-gray-200"
+                          />
+                        ) : (
+                          <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-sm text-gray-600 font-semibold">
+                            {(review.users?.full_name || "R")
+                              .charAt(0)
+                              .toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <h3 className="font-semibold text-gray-900">
+                            {review.users?.full_name || "Unknown User"}
+                          </h3>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedReviewer({
+                                fullName:
+                                  review.users?.full_name || "Unknown User",
+                                profilePicture:
+                                  review.users?.profile_picture || null,
+                              })
+                            }
+                            className="text-sm text-gray-600 hover:text-primary-700 underline"
+                          >
+                            By: {review.users?.full_name || "Unknown User"}
+                          </button>
+                        </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-right">
@@ -179,6 +296,52 @@ export default function ReviewsPage() {
       </div>
 
       <Footer />
+
+      {selectedReviewer && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setSelectedReviewer(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Reviewer Profile
+            </h3>
+
+            <div className="flex items-center gap-4">
+              {selectedReviewer.profilePicture ? (
+                <img
+                  src={selectedReviewer.profilePicture}
+                  alt={`${selectedReviewer.fullName} profile`}
+                  className="h-16 w-16 rounded-full object-cover border border-gray-200"
+                />
+              ) : (
+                <div className="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center text-xl text-gray-700 font-semibold">
+                  {selectedReviewer.fullName.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div>
+                <p className="text-sm text-gray-500">Name</p>
+                <p className="font-semibold text-gray-900">
+                  {selectedReviewer.fullName}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedReviewer(null)}
+                className="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

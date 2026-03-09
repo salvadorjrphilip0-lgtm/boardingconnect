@@ -1,15 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import {
-  LayoutDashboard,
-  Home,
-  MessageSquare,
-  FileText,
-  User,
-  LogOut,
-  Menu,
-  X,
-} from "lucide-react";
+import { LayoutDashboard, FileText, User, LogOut, Menu, X } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import toast from "react-hot-toast";
 
@@ -18,12 +9,15 @@ const RenterSidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isVisible, setIsVisible] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth < 1024 : true,
+  );
 
   useEffect(() => {
     const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-      if (window.innerWidth >= 768) {
+      setIsMobile(window.innerWidth < 1024);
+      if (window.innerWidth >= 1024) {
         setIsVisible(false);
       }
     };
@@ -40,21 +34,32 @@ const RenterSidebar = () => {
 
   const isActive = (path) => location.pathname === path;
 
+  const formatPhoneNumber = (value) => {
+    if (!value) return "No number";
+
+    const raw = String(value).trim();
+    const digits = raw.replace(/\D/g, "");
+
+    if (digits.length === 11 && digits.startsWith("0")) {
+      return `${digits.slice(0, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
+    }
+
+    if (digits.length === 10 && digits.startsWith("9")) {
+      return `0${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+    }
+
+    if (digits.length === 12 && digits.startsWith("63")) {
+      return `+63 ${digits.slice(2, 5)}-${digits.slice(5, 8)}-${digits.slice(8)}`;
+    }
+
+    return raw;
+  };
+
   const menuItems = [
     {
       path: "/dashboard",
       label: "Dashboard",
       icon: LayoutDashboard,
-    },
-    {
-      path: "/listings",
-      label: "Browse Listings",
-      icon: Home,
-    },
-    {
-      path: "/messages",
-      label: "Messages",
-      icon: MessageSquare,
     },
     {
       path: "/applications",
@@ -89,7 +94,7 @@ const RenterSidebar = () => {
       {isMobile && (
         <button
           onClick={() => setIsVisible(!isVisible)}
-          className="fixed top-4 left-4 z-50 md:hidden p-2 bg-white rounded-lg shadow-md"
+          className="fixed top-4 left-4 z-50 lg:hidden p-2 bg-white rounded-lg shadow-md"
         >
           {isVisible ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
@@ -106,27 +111,47 @@ const RenterSidebar = () => {
       {/* Desktop trigger area on the left edge */}
       {!isMobile && (
         <div
-          className="hidden md:block fixed left-0 top-0 w-6 h-screen z-30"
+          className="hidden lg:block fixed left-0 top-0 w-6 h-dvh z-30"
           onMouseEnter={() => setIsVisible(true)}
         />
       )}
 
       {/* Sidebar */}
       <div
-        className={`w-64 bg-white shadow-lg h-screen fixed left-0 top-0 z-40 transition-transform duration-300 ease-in-out ${
+        className={`w-[85vw] max-w-[320px] sm:w-72 lg:w-64 bg-white shadow-lg h-dvh fixed left-0 top-0 z-40 transition-transform duration-300 ease-in-out flex flex-col ${
           isVisible ? "translate-x-0" : "-translate-x-full"
         }`}
         onMouseEnter={() => !isMobile && setIsVisible(true)}
         onMouseLeave={() => !isMobile && setIsVisible(false)}
       >
-        <div className="p-6 border-b">
+        <div className="p-6 border-b text-center">
           <h2 className="text-xl font-bold text-gray-900">Renter Panel</h2>
-          <p className="text-sm text-gray-600 mt-1">
-            Welcome, {user?.fullName}
+          <div className="mt-4 flex justify-center">
+            {user?.profilePicture ? (
+              <button
+                type="button"
+                onClick={() => setIsAvatarModalOpen(true)}
+                aria-label="Open avatar preview"
+              >
+                <img
+                  src={user.profilePicture}
+                  alt={`${user?.fullName || "Renter"} avatar`}
+                  className="h-24 w-24 rounded-full object-cover border border-gray-200 hover:opacity-90 transition-opacity cursor-pointer"
+                />
+              </button>
+            ) : (
+              <div className="h-14 w-14 rounded-full bg-gray-200 flex items-center justify-center text-gray-700 font-semibold">
+                {(user?.fullName || "R").charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+          <p className="text-sm text-gray-600 mt-2">{user?.fullName}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {formatPhoneNumber(user?.phone || user?.phoneNumber)}
           </p>
         </div>
 
-        <nav className="flex-1 px-4 py-6">
+        <nav className="flex-1 px-4 py-6 overflow-y-auto">
           <ul className="space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
@@ -150,7 +175,7 @@ const RenterSidebar = () => {
           </ul>
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t">
+        <div className="p-4 border-t bg-white">
           <button
             onClick={handleLogout}
             className="flex items-center w-full px-4 py-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -160,6 +185,29 @@ const RenterSidebar = () => {
           </button>
         </div>
       </div>
+
+      {isAvatarModalOpen && user?.profilePicture && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4"
+          onClick={() => setIsAvatarModalOpen(false)}
+        >
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setIsAvatarModalOpen(false)}
+              className="absolute -top-10 right-0 bg-white rounded-full p-2 shadow"
+              aria-label="Close avatar preview"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <img
+              src={user.profilePicture}
+              alt={`${user?.fullName || "Renter"} avatar`}
+              className="max-h-[80vh] max-w-[90vw] rounded-xl object-contain"
+            />
+          </div>
+        </div>
+      )}
     </>
   );
 };

@@ -18,7 +18,7 @@ export const generateUserActivityReport = async (req, res) => {
         applications:applications(count),
         messages_sent:messages(count)
       `,
-      { count: "exact" }
+      { count: "exact" },
     );
 
     if (start_date && end_date) {
@@ -28,6 +28,43 @@ export const generateUserActivityReport = async (req, res) => {
     const { data: users, error: usersError, count } = await query;
 
     if (usersError) throw usersError;
+
+    // Build renter tenancy list for admin summary
+    let agreementsQuery = supabase
+      .from("agreements")
+      .select(
+        `
+          id,
+          renter_confirmed_at,
+          end_date,
+          due_date,
+          rent_status,
+          renter:users!renter_id(id, full_name, phone, role),
+          listing:listings(id, title)
+        `,
+      )
+      .eq("status", "confirmed")
+      .order("created_at", { ascending: false });
+
+    if (start_date && end_date) {
+      agreementsQuery = agreementsQuery
+        .gte("created_at", start_date)
+        .lte("created_at", end_date);
+    }
+
+    const { data: agreements, error: agreementsError } = await agreementsQuery;
+    if (agreementsError) throw agreementsError;
+
+    const rentersList = (agreements || [])
+      .filter((agreement) => agreement?.renter?.role === "renter")
+      .map((agreement) => ({
+        renter_name: agreement?.renter?.full_name || "Unknown Renter",
+        contact_number: agreement?.renter?.phone || "N/A",
+        boarding_house_title: agreement?.listing?.title || "Untitled Listing",
+        move_in_date: agreement?.renter_confirmed_at || null,
+        contract_date: agreement?.end_date || null,
+        renter_status: agreement?.rent_status === "paid" ? "paid" : "partial",
+      }));
 
     // Calculate statistics
     const totalUsers = count;
@@ -43,6 +80,8 @@ export const generateUserActivityReport = async (req, res) => {
     const reportData = {
       total_users: totalUsers,
       users_by_role: usersByRole,
+      total_renters_in_contract: rentersList.length,
+      renters_list: rentersList,
       report_generated_at: new Date().toISOString(),
       period: {
         start: start_date || "all_time",
@@ -141,7 +180,9 @@ export const generateListingVerificationReport = async (req, res) => {
 export const generateConcernsSummaryReport = async (req, res) => {
   try {
     const admin_id = req.user.id;
-    const { status, limit = 30 } = req.query;
+    const payload = { ...(req.query || {}), ...(req.body || {}) };
+    const status = payload.status;
+    const limit = Number(payload.limit || 30);
 
     // Get concerns
     let query = supabase
@@ -160,6 +201,61 @@ export const generateConcernsSummaryReport = async (req, res) => {
 
     if (concernsError) throw concernsError;
 
+    // Reviews per posted boarding house
+    const { data: listings, error: listingsError } = await supabase
+      .from("listings")
+      .select("id, title")
+      .order("created_at", { ascending: false });
+
+    if (listingsError) throw listingsError;
+
+    const { data: reviews, error: reviewsError } = await supabase
+      .from("reviews")
+      .select("listing_id");
+
+    if (reviewsError) throw reviewsError;
+
+    const reviewsCountByListingId = {};
+    (reviews || []).forEach((review) => {
+      if (!review?.listing_id) return;
+      reviewsCountByListingId[review.listing_id] =
+        (reviewsCountByListingId[review.listing_id] || 0) + 1;
+    });
+
+    const reviewsPerBoardingHouse = (listings || []).map((listing) => ({
+      label: listing.title || "Untitled Listing",
+      listing_id: listing.id,
+      value: reviewsCountByListingId[listing.id] || 0,
+    }));
+
+    // Concerns per renter
+    const { data: allConcernsForRenterStats, error: renterStatsError } =
+      await supabase
+        .from("concerns")
+        .select("renter_id, users:renter_id(full_name)");
+
+    if (renterStatsError) throw renterStatsError;
+
+    const concernsByRenterMap = {};
+    (allConcernsForRenterStats || []).forEach((item) => {
+      const renterId = item?.renter_id;
+      if (!renterId) return;
+
+      const renterName = item?.users?.full_name || "Unknown Renter";
+      if (!concernsByRenterMap[renterId]) {
+        concernsByRenterMap[renterId] = {
+          label: renterName,
+          renter_id: renterId,
+          value: 0,
+        };
+      }
+      concernsByRenterMap[renterId].value += 1;
+    });
+
+    const concernsPerRenter = Object.values(concernsByRenterMap).sort(
+      (a, b) => b.value - a.value,
+    );
+
     // Calculate statistics
     const statusBreakdown = {};
     concerns.forEach((concern) => {
@@ -173,6 +269,9 @@ export const generateConcernsSummaryReport = async (req, res) => {
       pending_count: statusBreakdown["pending"] || 0,
       reviewed_count: statusBreakdown["reviewed"] || 0,
       resolved_count: statusBreakdown["resolved"] || 0,
+      total_reviews_all_boarding_houses: (reviews || []).length,
+      reviews_per_boarding_house: reviewsPerBoardingHouse,
+      concerns_per_renter: concernsPerRenter,
       resolution_rate: (
         (((statusBreakdown["reviewed"] || 0) +
           (statusBreakdown["resolved"] || 0)) /
@@ -224,7 +323,7 @@ export const getAllReports = async (req, res) => {
         created_at,
         users:generated_by (id, full_name)
       `,
-      { count: "exact" }
+      { count: "exact" },
     );
 
     if (type) {
@@ -269,7 +368,7 @@ export const getReportDetail = async (req, res) => {
         data,
         created_at,
         users:generated_by (id, full_name, email)
-      `
+      `,
       )
       .eq("id", report_id)
       .single();
@@ -301,5 +400,68 @@ export const deleteReport = async (req, res) => {
   } catch (error) {
     console.error("Error deleting report:", error);
     res.status(500).json({ message: "Error deleting report" });
+  }
+};
+
+// Get monthly income records (admin only)
+export const getMonthlyIncomeRecords = async (req, res) => {
+  try {
+    const { page = 1, limit = 500 } = req.query;
+    const parsedPage = Number(page) || 1;
+    const parsedLimit = Number(limit) || 500;
+    const offset = (parsedPage - 1) * parsedLimit;
+
+    const { data, error, count } = await supabase
+      .from("monthly_income_records")
+      .select(
+        `
+        id,
+        agreement_id,
+        listing_id,
+        owner_id,
+        renter_id,
+        listing_price,
+        total_payment,
+        payment_type,
+        recorded_at,
+        renter:renter_id(id, full_name),
+        owner:owner_id(id, full_name),
+        listing:listing_id(id, title)
+      `,
+        { count: "exact" },
+      )
+      .order("recorded_at", { ascending: false })
+      .range(offset, offset + parsedLimit - 1);
+
+    if (error) throw error;
+
+    const normalizedRecords = (data || []).map((record) => {
+      const listingPrice = Number(record?.listing_price) || 0;
+      const totalPayment = Number(record?.total_payment) || 0;
+
+      let computedPaymentType = "unpaid";
+      if (totalPayment > 0) {
+        computedPaymentType =
+          listingPrice > 0 && totalPayment < listingPrice ? "partial" : "paid";
+      }
+
+      return {
+        ...record,
+        payment_type: computedPaymentType,
+      };
+    });
+
+    res.json({
+      records: normalizedRecords,
+      pagination: {
+        page: parsedPage,
+        limit: parsedLimit,
+        total: count || 0,
+        pages: Math.ceil((count || 0) / parsedLimit),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching monthly income records:", error);
+    res.status(500).json({ message: "Error fetching monthly income records" });
   }
 };

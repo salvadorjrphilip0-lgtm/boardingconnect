@@ -1,6 +1,16 @@
 import { supabase } from "../config/supabase.js";
 import { logActivity } from "../utils/auditLog.js";
 
+const parseAgreementTerms = (terms) => {
+  if (!terms) return {};
+  try {
+    const parsed = JSON.parse(terms);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
 // Get user agreements
 export const getUserAgreements = async (req, res) => {
   try {
@@ -26,7 +36,55 @@ export const getUserAgreements = async (req, res) => {
 
     if (error) throw error;
 
-    res.json(data);
+    const listingIds = (data || [])
+      .map((agreement) => agreement?.listing?.id)
+      .filter(Boolean);
+
+    let ratingSummaryByListing = {};
+
+    if (listingIds.length > 0) {
+      const { data: reviewRows, error: reviewsError } = await supabase
+        .from("reviews")
+        .select("listing_id, rating")
+        .in("listing_id", listingIds);
+
+      if (reviewsError) throw reviewsError;
+
+      ratingSummaryByListing = (reviewRows || []).reduce((acc, review) => {
+        const listingId = review.listing_id;
+        const rating = Number(review.rating) || 0;
+
+        if (!acc[listingId]) {
+          acc[listingId] = { totalRatings: 0, ratingTotal: 0 };
+        }
+
+        acc[listingId].totalRatings += 1;
+        acc[listingId].ratingTotal += rating;
+        return acc;
+      }, {});
+    }
+
+    const agreementsWithListingRatings = (data || []).map((agreement) => {
+      if (!agreement?.listing) return agreement;
+
+      const listingId = agreement.listing.id;
+      const totalRatings = ratingSummaryByListing[listingId]?.totalRatings || 0;
+      const ratingTotal = ratingSummaryByListing[listingId]?.ratingTotal || 0;
+
+      return {
+        ...agreement,
+        listing: {
+          ...agreement.listing,
+          totalRatings,
+          averageRating:
+            totalRatings > 0
+              ? Number((ratingTotal / totalRatings).toFixed(1))
+              : 0,
+        },
+      };
+    });
+
+    res.json(agreementsWithListingRatings);
   } catch (error) {
     console.error("Get agreements error:", error);
     res.status(500).json({ message: "Server error" });
@@ -196,19 +254,29 @@ export const cancelAgreement = async (req, res) => {
 export const updateRentStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { rent_status, due_date, end_date, start_date } = req.body;
+    const {
+      rent_status,
+      due_date,
+      end_date,
+      contract_date,
+      start_date,
+      payment_amount,
+    } = req.body;
+
+    const agreementFields = "id, owner_id, listing_id, renter_id, terms";
+    const { data: existingAgreement, error: existingErr } = await supabase
+      .from("agreements")
+      .select(agreementFields)
+      .eq("id", id)
+      .single();
+
+    if (existingErr || !existingAgreement) {
+      return res.status(404).json({ message: "Agreement not found" });
+    }
 
     // ensure owner can only modify their own agreements
     if (req.user.role === "owner") {
-      const { data: existing, error: fetchErr } = await supabase
-        .from("agreements")
-        .select("owner_id")
-        .eq("id", id)
-        .single();
-      if (fetchErr || !existing) {
-        return res.status(404).json({ message: "Agreement not found" });
-      }
-      if (existing.owner_id !== req.user.id) {
+      if (existingAgreement.owner_id !== req.user.id) {
         return res.status(403).json({ message: "Permission denied" });
       }
     }
@@ -219,13 +287,69 @@ export const updateRentStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid rent_status" });
     }
 
+    let normalizedPaymentAmount;
+    let derivedPaymentType;
+    let listingPriceForRecord = 0;
+    if (
+      payment_amount !== undefined &&
+      payment_amount !== null &&
+      payment_amount !== ""
+    ) {
+      normalizedPaymentAmount = Number(payment_amount);
+      if (
+        !Number.isFinite(normalizedPaymentAmount) ||
+        normalizedPaymentAmount < 0
+      ) {
+        return res.status(400).json({ message: "Invalid payment_amount" });
+      }
+    }
+
     const updateData = {};
     if (rent_status) updateData.rent_status = rent_status;
     if (due_date !== undefined) updateData.due_date = due_date;
     if (end_date !== undefined) updateData.end_date = end_date;
+    if (contract_date !== undefined) updateData.end_date = contract_date;
     // allow owner to manually set renter start date
     if (start_date !== undefined) {
       updateData.renter_confirmed_at = start_date;
+    }
+
+    if (normalizedPaymentAmount !== undefined) {
+      const { data: listing, error: listingErr } = await supabase
+        .from("listings")
+        .select("price")
+        .eq("id", existingAgreement.listing_id)
+        .single();
+
+      if (listingErr || !listing) {
+        return res.status(400).json({ message: "Related listing not found" });
+      }
+
+      const listingPrice = Number(listing.price) || 0;
+      listingPriceForRecord = listingPrice;
+      // DB rent_status supports due/paid/cancelled only.
+      // Partial is represented via payment metadata; UI derives the "partial" badge.
+      updateData.rent_status =
+        listingPrice > 0 && normalizedPaymentAmount >= listingPrice
+          ? "paid"
+          : "due";
+
+      const existingTerms = parseAgreementTerms(existingAgreement.terms);
+      const derivedPaymentStatus =
+        normalizedPaymentAmount <= 0
+          ? "unpaid"
+          : listingPrice > 0 && normalizedPaymentAmount < listingPrice
+            ? "partial"
+            : "paid";
+      derivedPaymentType = derivedPaymentStatus;
+
+      const updatedTerms = {
+        ...existingTerms,
+        payment_amount: normalizedPaymentAmount,
+        payment_status: derivedPaymentStatus,
+      };
+
+      updateData.terms = JSON.stringify(updatedTerms);
     }
 
     const { data, error } = await supabase
@@ -236,6 +360,27 @@ export const updateRentStatus = async (req, res) => {
       .single();
 
     if (error) throw error;
+
+    if (normalizedPaymentAmount !== undefined) {
+      const { error: incomeRecordError } = await supabase
+        .from("monthly_income_records")
+        .insert([
+          {
+            agreement_id: existingAgreement.id,
+            listing_id: existingAgreement.listing_id,
+            owner_id: existingAgreement.owner_id,
+            renter_id: existingAgreement.renter_id,
+            listing_price: listingPriceForRecord,
+            total_payment: normalizedPaymentAmount,
+            payment_type: derivedPaymentType || "unpaid",
+            recorded_by: req.user.id,
+          },
+        ]);
+
+      if (incomeRecordError) {
+        throw incomeRecordError;
+      }
+    }
 
     res.json({ message: "Rent status updated", agreement: data });
   } catch (error) {
@@ -309,12 +454,14 @@ export const getRentSummary = async (req, res) => {
     // fetch all agreements with statuses and update timestamps
     const { data, error } = await supabase
       .from("agreements")
-      .select("rent_status, updated_at");
+      .select("renter_id, rent_status, updated_at");
 
     if (error) throw error;
 
     const daily = {};
     const monthly = {};
+    const dailyRenters = {};
+    const monthlyRenters = {};
 
     data.forEach(({ rent_status, updated_at }) => {
       const dt = new Date(updated_at);
@@ -324,13 +471,33 @@ export const getRentSummary = async (req, res) => {
 
       const ensure = (obj, key) => {
         if (!obj[key]) {
-          obj[key] = { paid: 0, due: 0, cancelled: 0 };
+          obj[key] = { total_renters: 0, paid: 0, due: 0, cancelled: 0 };
         }
         return obj[key];
       };
 
       ensure(daily, date)[rent_status]++;
       ensure(monthly, month)[rent_status]++;
+
+      if (!dailyRenters[date]) dailyRenters[date] = new Set();
+      if (!monthlyRenters[month]) monthlyRenters[month] = new Set();
+
+      if (renter_id) {
+        dailyRenters[date].add(renter_id);
+        monthlyRenters[month].add(renter_id);
+      }
+    });
+
+    Object.keys(daily).forEach((dateKey) => {
+      daily[dateKey].total_renters = dailyRenters[dateKey]
+        ? dailyRenters[dateKey].size
+        : 0;
+    });
+
+    Object.keys(monthly).forEach((monthKey) => {
+      monthly[monthKey].total_renters = monthlyRenters[monthKey]
+        ? monthlyRenters[monthKey].size
+        : 0;
     });
 
     res.json({ daily, monthly });

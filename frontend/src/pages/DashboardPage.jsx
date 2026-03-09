@@ -1,24 +1,56 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import {
-  Home,
-  MessageSquare,
-  FileText,
-  PlusCircle,
-  Edit,
-  Trash2,
-} from "lucide-react";
+import { Home, MapPin, Users, Edit, Trash2, Star } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   listingService,
   applicationService,
   agreementService,
+  websiteReviewService,
 } from "../services/api";
-import Navbar from "../components/Navbar";
 import OwnerSidebar from "../components/OwnerSidebar";
 import RenterSidebar from "../components/RenterSidebar";
 import Footer from "../components/Footer";
 import toast from "react-hot-toast";
+import {
+  getPaymentStatusBadge,
+  getTimeStatusBadge,
+} from "../utils/renterStatus";
+
+const toStringArray = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean);
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.filter(Boolean);
+    } catch {
+      // Continue to fallback handling
+    }
+
+    if (value.includes(",")) {
+      return value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    return value.trim() ? [value.trim()] : [];
+  }
+
+  return [];
+};
+
+const getListingImages = (listing) =>
+  toStringArray(listing?.images).filter((image) => typeof image === "string");
+
+const getListingAmenities = (listing) =>
+  toStringArray(listing?.amenities).filter(
+    (amenity) => typeof amenity === "string",
+  );
+
+const getRelationObject = (value) =>
+  Array.isArray(value) ? (value[0] ?? null) : value;
 
 const DashboardPage = () => {
   const { user } = useAuth();
@@ -26,11 +58,16 @@ const DashboardPage = () => {
     listings: 0,
     applications: 0,
     agreements: 0,
-    messages: 0,
   });
   const [myListings, setMyListings] = useState([]);
   const [recentApplications, setRecentApplications] = useState([]);
+  const [renterAgreements, setRenterAgreements] = useState([]);
+  const [ownerAgreements, setOwnerAgreements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showWebsiteReviewModal, setShowWebsiteReviewModal] = useState(false);
+  const [websiteRating, setWebsiteRating] = useState(0);
+  const [websiteComment, setWebsiteComment] = useState("");
+  const [submittingWebsiteReview, setSubmittingWebsiteReview] = useState(false);
 
   useEffect(() => {
     // Clear previous state and refetch dashboard data whenever the
@@ -39,7 +76,9 @@ const DashboardPage = () => {
     if (!user) {
       setMyListings([]);
       setRecentApplications([]);
-      setStats({ listings: 0, applications: 0, agreements: 0, messages: 0 });
+      setRenterAgreements([]);
+      setOwnerAgreements([]);
+      setStats({ listings: 0, applications: 0, agreements: 0 });
       setLoading(false);
       return;
     }
@@ -47,8 +86,27 @@ const DashboardPage = () => {
     setLoading(true);
     setMyListings([]);
     setRecentApplications([]);
+    setRenterAgreements([]);
+    setOwnerAgreements([]);
     fetchDashboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !["renter", "owner"].includes(user.role)) return;
+
+    const checkWebsiteReview = async () => {
+      try {
+        const data = await websiteReviewService.getMine();
+        if (!data?.rated) {
+          setShowWebsiteReviewModal(true);
+        }
+      } catch (error) {
+        console.error("Failed to check website review status:", error);
+      }
+    };
+
+    checkWebsiteReview();
   }, [user]);
 
   const fetchDashboardData = async () => {
@@ -62,12 +120,29 @@ const DashboardPage = () => {
       }
 
       // Applications fetched are scoped to the authenticated user on the server
-      const applications = await applicationService.getByUser();
+      const applications = applicationService.getByUser
+        ? await applicationService.getByUser()
+        : await applicationService.getUserApplications();
       // If owner, show recent applications to their listings
       if (user.role === "owner") {
         setRecentApplications(applications.slice(0, 5));
       }
       const agreements = await agreementService.getByUser();
+
+      if (user.role === "renter") {
+        const rented = (agreements || []).filter((agreement) =>
+          ["confirmed", "active"].includes(
+            String(agreement?.status || "").toLowerCase(),
+          ),
+        );
+        setRenterAgreements(rented);
+      } else if (user.role === "owner") {
+        const owned = (agreements || []).filter(
+          (agreement) =>
+            String(agreement?.status || "").toLowerCase() !== "cancelled",
+        );
+        setOwnerAgreements(owned);
+      }
 
       setStats((prev) => ({
         ...prev,
@@ -90,6 +165,34 @@ const DashboardPage = () => {
       fetchDashboardData();
     } catch (error) {
       toast.error("Failed to delete listing");
+    }
+  };
+
+  const submitWebsiteReview = async () => {
+    if (websiteRating < 1 || websiteRating > 5) {
+      toast.error("Please select a rating from 1 to 5 stars");
+      return;
+    }
+
+    if (!websiteComment.trim()) {
+      toast.error("Please add a comment");
+      return;
+    }
+
+    try {
+      setSubmittingWebsiteReview(true);
+      await websiteReviewService.submit({
+        rating: websiteRating,
+        comment: websiteComment.trim(),
+      });
+      toast.success("Thanks for rating the website!");
+      setShowWebsiteReviewModal(false);
+    } catch (error) {
+      toast.error(
+        error?.response?.data?.message || "Failed to submit website rating",
+      );
+    } finally {
+      setSubmittingWebsiteReview(false);
     }
   };
 
@@ -118,77 +221,35 @@ const DashboardPage = () => {
             </p>
           </div>
 
-          {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            {user.role === "owner" && (
-              <div className="card p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600">My Listings</p>
-                    <p className="text-3xl font-bold text-gray-900">
-                      {stats.listings}
-                    </p>
-                  </div>
-                  <Home className="h-12 w-12 text-primary-600" />
-                </div>
-              </div>
-            )}
-
-            <div className="card p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Applications</p>
-                  <p className="text-3xl font-bold text-gray-900">
-                    {stats.applications}
-                  </p>
-                </div>
-                <FileText className="h-12 w-12 text-blue-600" />
-              </div>
-            </div>
-
-            <div className="card p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Agreements</p>
-                  <p className="text-3xl font-bold text-gray-900">
-                    {stats.agreements}
-                  </p>
-                </div>
-                <FileText className="h-12 w-12 text-green-600" />
-              </div>
-            </div>
-
-            <div className="card p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Messages</p>
-                  <p className="text-3xl font-bold text-gray-900">
-                    {stats.messages}
-                  </p>
-                </div>
-                <MessageSquare className="h-12 w-12 text-purple-600" />
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Actions */}
+          {/* Browse Listings + Totals */}
           <div className="card p-6 mb-8">
             <h2 className="text-xl font-bold text-gray-900 mb-4">
-              Quick Actions
+              Browse Listings
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="mb-6">
               <Link to="/listings" className="btn-outline">
-                Browse Listings
+                Find Here ...
               </Link>
-              <Link to="/messages" className="btn-outline">
-                View Messages
-              </Link>
-              {user.role === "owner" && (
-                <Link to="/create-listing" className="btn-primary">
-                  <PlusCircle className="inline h-5 w-5 mr-2" />
-                  Create Listing
-                </Link>
-              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <p className="text-sm text-gray-600">
+                  {user.role === "owner"
+                    ? "My Total Listings"
+                    : "Total Applications"}
+                </p>
+                <p className="text-2xl font-bold text-blue-700">
+                  {user.role === "owner" ? stats.listings : stats.applications}
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                <p className="text-sm text-gray-600">Total Agreements</p>
+                <p className="text-2xl font-bold text-green-700">
+                  {stats.agreements}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -205,40 +266,111 @@ const DashboardPage = () => {
                 </Link>
               </div>
               <div className="space-y-4">
-                {myListings.map((listing) => (
-                  <div
-                    key={listing.id}
-                    className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-bold text-gray-900">
-                          {listing.title}
-                        </h3>
-                        <p className="text-sm text-gray-600">
-                          {listing.location}
-                        </p>
-                        <p className="text-primary-600 font-semibold mt-2">
-                          ₱{listing.price}/month
-                        </p>
-                      </div>
-                      <div className="flex space-x-2">
-                        <Link
-                          to={`/edit-listing/${listing.id}`}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded"
-                        >
-                          <Edit className="h-5 w-5" />
-                        </Link>
-                        <button
-                          onClick={() => handleDeleteListing(listing.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </button>
+                {myListings.map((listing) => {
+                  const listingImages = getListingImages(listing);
+                  const listingAmenities = getListingAmenities(listing);
+                  const listingCapacity = Number(listing.capacity) || 0;
+
+                  return (
+                    <div
+                      key={listing.id}
+                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div className="flex flex-col sm:flex-row gap-4 flex-1 min-w-0">
+                          <Link
+                            to={`/listings/${listing.id}`}
+                            className="w-full sm:w-52 h-36 rounded-lg overflow-hidden bg-gradient-to-r from-primary-400 to-primary-600 flex-shrink-0 block"
+                            aria-label={`Open ${listing.title || "listing"} details`}
+                          >
+                            {listingImages.length > 0 ? (
+                              <img
+                                src={listingImages[0]}
+                                alt={listing.title || "Boarding house image"}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Home className="h-10 w-10 text-white/70" />
+                              </div>
+                            )}
+                          </Link>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <h3 className="font-bold text-gray-900 text-lg line-clamp-1">
+                                {listing.title}
+                              </h3>
+                              {listing.status && (
+                                <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700 border border-gray-200 capitalize">
+                                  {listing.status}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="mt-1 flex items-center text-sm text-gray-600">
+                              <MapPin className="h-4 w-4 mr-1 flex-shrink-0" />
+                              <span className="line-clamp-1">
+                                {listing.location || "No location provided"}
+                              </span>
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+                              <p className="text-primary-600 font-semibold">
+                                ₱{listing.price}/month
+                              </p>
+                              <p className="text-sm text-gray-600 inline-flex items-center">
+                                <Users className="h-4 w-4 mr-1" />
+                                {listingCapacity} slot
+                                {listingCapacity === 1 ? "" : "s"}
+                              </p>
+                            </div>
+
+                            <p className="mt-2 text-sm text-gray-600 line-clamp-2">
+                              {listing.description ||
+                                "No description added for this boarding house yet."}
+                            </p>
+
+                            {listingAmenities.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {listingAmenities
+                                  .slice(0, 4)
+                                  .map((amenity, index) => (
+                                    <span
+                                      key={`${listing.id}-amenity-${index}`}
+                                      className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md border border-gray-200"
+                                    >
+                                      {amenity}
+                                    </span>
+                                  ))}
+                                {listingAmenities.length > 4 && (
+                                  <span className="text-xs text-gray-500 px-1 py-1">
+                                    +{listingAmenities.length - 4} more
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex space-x-2 self-end md:self-start">
+                          <Link
+                            to={`/edit-listing/${listing.id}`}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded"
+                          >
+                            <Edit className="h-5 w-5" />
+                          </Link>
+                          <button
+                            onClick={() => handleDeleteListing(listing.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -252,72 +384,99 @@ const DashboardPage = () => {
               {user.role === "owner" ? (
                 recentApplications.length > 0 ? (
                   <div className="space-y-4">
-                    {recentApplications.map((app) => (
-                      <div key={app.id} className="border rounded p-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="font-semibold">
-                              {app.listing?.title}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              Applicant: {app.applicant?.full_name}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {new Date(app.created_at).toLocaleString()}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm text-gray-700 mb-2">
-                              {app.status}
-                            </p>
-                            {app.status === "pending" && (
-                              <div className="space-x-2">
-                                <button
-                                  onClick={async () => {
-                                    try {
-                                      await applicationService.updateStatus(
-                                        app.id,
-                                        "accepted",
-                                      );
-                                      toast.success(
-                                        "Application accepted — agreement created",
-                                      );
-                                      fetchDashboardData();
-                                    } catch (err) {
-                                      toast.error(
-                                        "Failed to accept application",
-                                      );
-                                    }
-                                  }}
-                                  className="btn-primary text-sm mr-2"
-                                >
-                                  Accept
-                                </button>
-                                <button
-                                  onClick={async () => {
-                                    try {
-                                      await applicationService.updateStatus(
-                                        app.id,
-                                        "rejected",
-                                      );
-                                      toast.success("Application rejected");
-                                      fetchDashboardData();
-                                    } catch (err) {
-                                      toast.error(
-                                        "Failed to reject application",
-                                      );
-                                    }
-                                  }}
-                                  className="btn-secondary text-sm"
-                                >
-                                  Reject
-                                </button>
+                    {recentApplications.map((app) => {
+                      const applicant = getRelationObject(app.applicant);
+
+                      return (
+                        <div key={app.id} className="border rounded p-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-semibold">
+                                {app.listing?.title}
+                              </p>
+
+                              <div className="mt-2 flex items-center gap-3">
+                                {applicant?.profile_picture ? (
+                                  <img
+                                    src={applicant.profile_picture}
+                                    alt={`${applicant?.full_name || "Renter"} avatar`}
+                                    className="h-10 w-10 rounded-full object-cover border border-gray-200"
+                                  />
+                                ) : (
+                                  <div className="h-10 w-10 rounded-full bg-gray-200 text-gray-600 border border-gray-300 flex items-center justify-center text-sm font-semibold">
+                                    {applicant?.full_name
+                                      ?.charAt(0)
+                                      ?.toUpperCase() || "R"}
+                                  </div>
+                                )}
+
+                                <div>
+                                  <p className="text-sm font-medium text-gray-800">
+                                    {applicant?.full_name || "Unknown renter"}
+                                  </p>
+                                  <p className="text-xs text-gray-600">
+                                    {applicant?.phone || "No phone number"}
+                                  </p>
+                                </div>
                               </div>
-                            )}
+
+                              <p className="text-xs text-gray-500">
+                                {new Date(app.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm text-gray-700 mb-2">
+                                {app.status}
+                              </p>
+                              {app.status === "pending" && (
+                                <div className="space-x-2">
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await applicationService.updateStatus(
+                                          app.id,
+                                          "accepted",
+                                        );
+                                        toast.success(
+                                          "Application accepted — agreement created",
+                                        );
+                                        fetchDashboardData();
+                                      } catch (err) {
+                                        toast.error(
+                                          "Failed to accept application",
+                                        );
+                                      }
+                                    }}
+                                    className="btn-primary text-sm mr-2"
+                                  >
+                                    Accept
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await applicationService.updateStatus(
+                                          app.id,
+                                          "rejected",
+                                        );
+                                        toast.success("Application rejected");
+                                        fetchDashboardData();
+                                      } catch (err) {
+                                        toast.error(
+                                          "Failed to reject application",
+                                        );
+                                      }
+                                    }}
+                                    className="btn-secondary text-sm"
+                                  >
+                                    Reject
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <div className="text-gray-600">
                       <Link
                         to="/applications"
@@ -356,20 +515,233 @@ const DashboardPage = () => {
               <h2 className="text-xl font-bold text-gray-900 mb-4">
                 Active Agreements
               </h2>
-              <div className="text-gray-600">
-                <Link
-                  to="/agreements"
-                  className="text-primary-600 hover:text-primary-700"
-                >
-                  View all agreements →
-                </Link>
-              </div>
+              {user.role === "renter" ? (
+                renterAgreements.length > 0 ? (
+                  <div className="space-y-3">
+                    {renterAgreements.map((agreement) => {
+                      const paymentStatus = getPaymentStatusBadge(agreement);
+                      const timeStatus = getTimeStatusBadge(agreement);
+
+                      return (
+                        <div key={agreement.id} className="border rounded p-3">
+                          <p className="font-semibold text-gray-900">
+                            {agreement.listing?.title ||
+                              "Unknown Boarding House"}
+                          </p>
+                          <p className="text-xs text-gray-500 mb-2">
+                            {agreement.listing?.location || "No location"}
+                          </p>
+
+                          <div className="flex flex-wrap gap-2">
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-semibold border ${paymentStatus.className}`}
+                            >
+                              {paymentStatus.text}
+                            </span>
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-semibold border ${timeStatus.className}`}
+                            >
+                              {timeStatus.text}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div>
+                      <Link
+                        to="/agreements"
+                        className="text-primary-600 hover:text-primary-700"
+                      >
+                        View all agreements →
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-gray-600">
+                    <p>No rented boarding house yet.</p>
+                    <div className="mt-3">
+                      <Link
+                        to="/agreements"
+                        className="text-primary-600 hover:text-primary-700"
+                      >
+                        View all agreements →
+                      </Link>
+                    </div>
+                  </div>
+                )
+              ) : user.role === "owner" ? (
+                ownerAgreements.length > 0 ? (
+                  <div className="space-y-3">
+                    {ownerAgreements.map((agreement) => {
+                      const paymentStatus = getPaymentStatusBadge(agreement);
+                      const timeStatus = getTimeStatusBadge(agreement);
+                      const renter = getRelationObject(agreement?.renter);
+
+                      return (
+                        <div key={agreement.id} className="border rounded p-3">
+                          <p className="font-semibold text-gray-900">
+                            {agreement.listing?.title ||
+                              "Unknown Boarding House"}
+                          </p>
+                          <p className="text-xs text-gray-500 mb-2">
+                            {agreement.listing?.location || "No location"}
+                          </p>
+
+                          <div className="mb-2 flex items-center gap-3">
+                            {renter?.profile_picture ? (
+                              <img
+                                src={renter.profile_picture}
+                                alt={`${renter?.full_name || "Renter"} avatar`}
+                                className="h-10 w-10 rounded-full object-cover border border-gray-200"
+                              />
+                            ) : (
+                              <div className="h-10 w-10 rounded-full bg-gray-200 text-gray-600 border border-gray-300 flex items-center justify-center text-sm font-semibold">
+                                {renter?.full_name?.charAt(0)?.toUpperCase() ||
+                                  "R"}
+                              </div>
+                            )}
+
+                            <div className="text-sm text-gray-700 space-y-1">
+                              <p>
+                                Renter: {renter?.full_name || "Unknown renter"}
+                              </p>
+                              <p>Email: {renter?.email || "No email"}</p>
+                              <p>Phone: {renter?.phone || "No phone"}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            <span className="px-3 py-1 rounded-full text-xs font-semibold border bg-blue-100 text-blue-700 border-blue-300 capitalize">
+                              Agreement: {agreement?.status || "pending"}
+                            </span>
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-semibold border ${paymentStatus.className}`}
+                            >
+                              {paymentStatus.text}
+                            </span>
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-semibold border ${timeStatus.className}`}
+                            >
+                              {timeStatus.text}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div>
+                      <Link
+                        to="/agreements"
+                        className="text-primary-600 hover:text-primary-700"
+                      >
+                        View all agreements →
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-gray-600">
+                    <p>No active agreements yet for your listings.</p>
+                    <div className="mt-3">
+                      <Link
+                        to="/agreements"
+                        className="text-primary-600 hover:text-primary-700"
+                      >
+                        View all agreements →
+                      </Link>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="text-gray-600">
+                  <Link
+                    to="/agreements"
+                    className="text-primary-600 hover:text-primary-700"
+                  >
+                    View all agreements →
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         <Footer />
       </div>
+
+      {showWebsiteReviewModal && ["renter", "owner"].includes(user?.role) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              Rate the Website
+            </h2>
+            <p className="text-gray-600 mb-4">
+              Welcome! Please rate your experience with the website. You can
+              rate once per account.
+            </p>
+
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-gray-700 mb-2">Rating</p>
+              <div className="flex items-center gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setWebsiteRating(star)}
+                    className="transition-transform hover:scale-110"
+                    aria-label={`Rate ${star} star${star > 1 ? "s" : ""}`}
+                  >
+                    <Star
+                      className={`h-8 w-8 ${
+                        star <= websiteRating
+                          ? "text-yellow-500 fill-yellow-500"
+                          : "text-gray-300"
+                      }`}
+                    />
+                  </button>
+                ))}
+                {websiteRating > 0 && (
+                  <span className="text-sm text-gray-600 ml-2">
+                    {websiteRating}/5
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Comment
+              </label>
+              <textarea
+                value={websiteComment}
+                onChange={(e) => setWebsiteComment(e.target.value)}
+                rows={4}
+                placeholder="Tell us about your website experience..."
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowWebsiteReviewModal(false)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                disabled={submittingWebsiteReview}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={submitWebsiteReview}
+                className="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-60"
+                disabled={submittingWebsiteReview}
+              >
+                {submittingWebsiteReview ? "Submitting..." : "Submit"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
