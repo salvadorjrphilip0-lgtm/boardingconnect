@@ -62,6 +62,29 @@ const HomePage = () => {
     },
   ];
 
+  const developers = [
+    {
+      name: "Philip Salvador Jr.",
+      role: "Full-Stack Developer",
+      image: "https://scontent.fceb3-1.fna.fbcdn.net/v/t39.30808-1/559032842_2204099540086813_3137192340666141654_n.jpg?stp=dst-jpg_s200x200_tt6&_nc_cat=103&ccb=1-7&_nc_sid=1d2534&_nc_eui2=AeGE0ZCo8mLCXlfsFovD69dQRMy41p6UKNtEzLjWnpQo28Zlw-hJ0MgrcVu7ppJZ3YToV9_z2Q3We4GxH1vys65S&_nc_ohc=rVLxQ2ck16oQ7kNvwGf6ADB&_nc_oc=AdnwFDV5MdP8fcfHiVELN6WdrFgHd0CxgHx5o60NAEWvB0Xmr6OTCc11D9abSEJ2Zhg&_nc_zt=24&_nc_ht=scontent.fceb3-1.fna&_nc_gid=9i50MHE9_yta6BRu4q_Reg&_nc_ss=8&oh=00_AfxrqL0uuxUtaruQcU6_ICeCB6UGldBPgOHkQ4J8ISEv5w&oe=69B764A7",
+    },
+    {
+      name: "Earlyn Roxas",
+      role: "Backend Developer",
+      image: "https://scontent.fceb9-1.fna.fbcdn.net/v/t39.30808-1/581928233_1878049833132319_8750242086102981519_n.jpg?stp=dst-jpg_s200x200_tt6&_nc_cat=109&ccb=1-7&_nc_sid=e99d92&_nc_eui2=AeHLiR0mFxi33aBhvhuBxJSh0_LCYdQK4tDT8sJh1Ari0AeQ2PZpZYCLazr7gPfQQi1T7WyO1aVYO6osW9ExPPsf&_nc_ohc=gAiNNV86UxoQ7kNvwG7c40k&_nc_oc=AdkqRxr1I1MAW-k83m3G15U25OdwhLPJtoPTyUV9-oCd10PFYV-qfoCwS0DFHMb5r1w&_nc_zt=24&_nc_ht=scontent.fceb9-1.fna&_nc_gid=JXIFQrByZ06cE77irNI10w&_nc_ss=8&oh=00_Afz14yyEFTqmpCWV0M2s9QtSFlHWm7qGdM_9oFgQkPot6Q&oe=69B7439F",
+    },
+    {
+      name: "Ainnz Thryzen Yane",
+      role: "UI/UX Developer",
+      image: "https://scontent.fceb9-1.fna.fbcdn.net/v/t39.30808-1/463247106_994032299406892_8226190267062407442_n.jpg?stp=dst-jpg_s200x200_tt6&_nc_cat=110&ccb=1-7&_nc_sid=e99d92&_nc_eui2=AeFVZRwZM1w93hAKqQaUMttgNgD77uE2ukY2APvu4Ta6RiE4VpOUZ9jPrPNQjlKs5wIFMydW8xZY7-RbBZ4lhAvM&_nc_ohc=CoOmhG3nZUgQ7kNvwHbOlLw&_nc_oc=AdnC3gYAhSnfbyfRQR4WDlBU4oeSjfF8PF_3nSoooa6gsBOV02uM973oZ5bzZk8UAGQ&_nc_zt=24&_nc_ht=scontent.fceb9-1.fna&_nc_gid=3pq3OSsdC0Z0Q7zs1wJIgg&_nc_ss=8&oh=00_Afx-BEYS2SaFbzRX2QDS6hC8mE-gh5crHYauzfmaGK_DDw&oe=69B76F7C",
+    },
+    {
+      name: "Mary Jane Asequia",
+      role: "Frontend Developer",
+      image: "https://scontent.fceb3-1.fna.fbcdn.net/v/t39.30808-1/619612718_1619201439257573_3920197240010327381_n.jpg?stp=dst-jpg_s200x200_tt6&_nc_cat=101&ccb=1-7&_nc_sid=e99d92&_nc_eui2=AeGgPmuX4C_AmuB6SOQnaY5ctyNFBFAVSdu3I0UEUBVJ2-SgpoCbqE5AZlPVTMqrr5RFW4aPDx-JXgckaHdRRejA&_nc_ohc=10qwJ0QLW0IQ7kNvwHKWBrM&_nc_oc=AdlF1xbFIUB2J38E-E4bFdCFBWBffed-Tcp1luAlpll_WjRTrE84j4QkOO55oWq048U&_nc_zt=24&_nc_ht=scontent.fceb3-1.fna&_nc_gid=vdT-mComNvNA3W7iy4z72Q&_nc_ss=8&oh=00_AfyjpQRSJvGANLGz2WSPRYKIuZPR2G0mxTiE80tV1C7QWg&oe=69B7675E",
+    },
+  ];
+
   const [stats, setStats] = React.useState([
     { number: "--", label: "Active Listings" },
     { number: "--", label: "Happy Students" },
@@ -285,6 +308,46 @@ const HomePage = () => {
                     <ArrowRight className="h-8 w-8 text-primary-300" />
                   </div>
                 )}
+              </motion.div>
+            ))}
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true }}
+            className="text-center mt-28 mb-10"
+          >
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              Developers
+            </h2>
+            <p className="text-xl text-gray-600">
+              Meet the team behind Boarding Connect
+            </p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            {developers.map((developer, index) => (
+              <motion.div
+                key={developer.name}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                viewport={{ once: true }}
+                className="rounded-2xl border border-yellow-200 bg-gradient-to-br from-yellow-50 via-yellow-100 to-yellow-200/80 p-6 text-center shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
+              >
+                <img
+                  src={developer.image}
+                  alt={developer.name}
+                  className="h-28 w-28 mx-auto rounded-full object-cover border-4 border-yellow-50 shadow-md ring-2 ring-yellow-300 mb-4"
+                />
+                <h3 className="text-lg font-bold text-gray-900">
+                  {developer.name}
+                </h3>
+                <p className="text-primary-700 mt-1 font-medium">
+                  {developer.role}
+                </p>
               </motion.div>
             ))}
           </div>
