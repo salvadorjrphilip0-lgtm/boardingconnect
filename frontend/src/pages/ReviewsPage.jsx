@@ -127,7 +127,7 @@ export default function ReviewsPage() {
                   <p className="text-sm text-gray-600">
                     Boarding House Reviews
                   </p>
-                  <p className="text-3xl font-bold text-blue-600">
+                  <p className="text-3xl font-bold text-green-600">
                     {reviews.length}
                   </p>
                 </div>
