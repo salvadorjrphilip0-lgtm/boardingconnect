@@ -21,42 +21,53 @@ import AdminSidebar from "../components/AdminSidebar";
 const ProfilePage = () => {
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ fullName: "", phone: "" });
+  const [profileDetails, setProfileDetails] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    fullName: "",
+    phone: "",
+    email: "",
+  });
+  const [selectedAvatarFile, setSelectedAvatarFile] = useState(null);
+  const [selectedAvatarPreviewUrl, setSelectedAvatarPreviewUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (user) {
-      setForm({ fullName: user.fullName || "", phone: user.phone || "" });
       setAvatarPreview(user.profilePicture || null);
     }
   }, [user]);
 
-  const handleChange = (e) =>
-    setForm({ ...form, [e.target.name]: e.target.value });
-
-  const handleSave = async () => {
-    setLoading(true);
-    try {
-      const res = await authService.updateProfile({
-        fullName: form.fullName,
-        phone: form.phone,
-      });
-      toast.success(res.message || "Profile updated");
-      if (refreshUser) await refreshUser();
-
-      if (user?.role === "admin") {
-        navigate("/admin");
-      } else {
-        navigate("/dashboard");
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user) {
+        setProfileDetails(null);
+        return;
       }
-    } catch (err) {
-      toast.error("Failed to update profile");
-    } finally {
-      setLoading(false);
-    }
-  };
+
+      try {
+        const profile = await authService.getProfile();
+        setProfileDetails(profile);
+      } catch (error) {
+        console.error("Failed to fetch profile details:", error);
+      }
+    };
+
+    fetchProfile();
+  }, [user]);
+
+  useEffect(() => {
+    return () => {
+      if (selectedAvatarPreviewUrl) {
+        URL.revokeObjectURL(selectedAvatarPreviewUrl);
+      }
+    };
+  }, [selectedAvatarPreviewUrl]);
+
+  const handleEditChange = (e) =>
+    setEditForm({ ...editForm, [e.target.name]: e.target.value });
 
   const computeAverage = (items) => {
     if (!Array.isArray(items) || items.length === 0) return "-";
@@ -376,30 +387,135 @@ const ProfilePage = () => {
       return;
     }
 
-    setLoading(true);
-    const formData = new FormData();
-    formData.append("file", file);
+    if (selectedAvatarPreviewUrl) {
+      URL.revokeObjectURL(selectedAvatarPreviewUrl);
+    }
 
-    // Use the new multipart endpoint
-    authService
-      .uploadAvatarMultipart(formData)
-      .then((res) => {
-        toast.success(res.message || "Avatar uploaded");
-        setAvatarPreview(
-          res.user?.profilePicture || res.user?.profile_picture || null,
-        );
-        if (refreshUser) refreshUser();
-      })
-      .catch((err) => {
-        toast.error(
-          err?.response?.data?.message ||
-            err?.message ||
-            "Failed to upload avatar",
-        );
-      })
-      .finally(() => {
+    setSelectedAvatarFile(file);
+    setSelectedAvatarPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const openEditModal = () => {
+    setEditForm({
+      fullName: profileDetails?.fullName || profileDetails?.full_name || "",
+      phone: profileDetails?.phone || "",
+      email: profileDetails?.email || user?.email || "",
+    });
+    setSelectedAvatarFile(null);
+    if (selectedAvatarPreviewUrl) {
+      URL.revokeObjectURL(selectedAvatarPreviewUrl);
+      setSelectedAvatarPreviewUrl("");
+    }
+    setIsEditModalOpen(true);
+  };
+
+  const closeEditModal = () => {
+    if (loading) return;
+    setIsEditModalOpen(false);
+    setSelectedAvatarFile(null);
+    if (selectedAvatarPreviewUrl) {
+      URL.revokeObjectURL(selectedAvatarPreviewUrl);
+      setSelectedAvatarPreviewUrl("");
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    setLoading(true);
+    try {
+      const trimmedEmail = editForm.email?.trim();
+      if (!trimmedEmail) {
+        toast.error("Email is required");
         setLoading(false);
+        return;
+      }
+
+      const res = await authService.updateProfile({
+        fullName: editForm.fullName,
+        phone: editForm.phone,
+        email: trimmedEmail,
       });
+
+      if (selectedAvatarFile) {
+        const formData = new FormData();
+        formData.append("file", selectedAvatarFile);
+        await authService.uploadAvatarMultipart(formData);
+      }
+
+      toast.success(res.message || "Profile updated");
+      if (refreshUser) await refreshUser();
+
+      const profile = await authService.getProfile();
+      setProfileDetails(profile);
+      setAvatarPreview(
+        profile?.profilePicture || profile?.profile_picture || null,
+      );
+
+      setIsEditModalOpen(false);
+      setSelectedAvatarFile(null);
+      if (selectedAvatarPreviewUrl) {
+        URL.revokeObjectURL(selectedAvatarPreviewUrl);
+        setSelectedAvatarPreviewUrl("");
+      }
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to update profile",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReturnDashboard = () => {
+    if (user?.role === "renter" || user?.role === "owner") {
+      navigate("/dashboard");
+    }
+  };
+
+  const resolveValue = (...values) => {
+    const value = values.find(
+      (item) => item !== undefined && item !== null && item !== "",
+    );
+    return value ?? "-";
+  };
+
+  const formatRegisteredDate = (value) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+
+    return new Intl.DateTimeFormat("en-PH", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }).format(date);
+  };
+
+  const profileInfo = {
+    profilePicture: resolveValue(
+      profileDetails?.profilePicture,
+      profileDetails?.profile_picture,
+      avatarPreview,
+      user?.profilePicture,
+    ),
+    fullName: resolveValue(
+      profileDetails?.fullName,
+      profileDetails?.full_name,
+      user?.fullName,
+    ),
+    phone: resolveValue(profileDetails?.phone, user?.phone),
+    idType: resolveValue(profileDetails?.idType, profileDetails?.id_type),
+    createdAt: formatRegisteredDate(
+      resolveValue(profileDetails?.createdAt, profileDetails?.created_at),
+    ),
+    email: resolveValue(profileDetails?.email, user?.email),
+    role: resolveValue(profileDetails?.role, user?.role),
+    idNumber: resolveValue(profileDetails?.idNumber, profileDetails?.id_number),
+    verification:
+      profileDetails?.verified === true || user?.verified === true
+        ? "Verified"
+        : "Not Verified",
   };
 
   return (
@@ -416,10 +532,10 @@ const ProfilePage = () => {
           <h2 className="text-2xl font-bold mb-4">My Profile</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="flex flex-col items-center">
-              <div className="w-32 h-32 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center mb-4">
-                {avatarPreview ? (
+              <div className="w-32 h-44 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center mb-4 border border-gray-200">
+                {profileInfo.profilePicture !== "-" ? (
                   <img
-                    src={avatarPreview}
+                    src={profileInfo.profilePicture}
                     alt="avatar"
                     className="w-full h-full object-cover"
                   />
@@ -427,54 +543,101 @@ const ProfilePage = () => {
                   <div className="text-gray-500">No photo</div>
                 )}
               </div>
-              <div className="w-full flex justify-center">
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFile}
-                    className="sr-only"
-                  />
-                  <div className="inline-flex items-center px-3 py-2 rounded-md bg-primary-50 text-primary-700 text-sm font-semibold border border-transparent hover:bg-primary-100 transition">
-                    Choose photo
-                  </div>
-                </label>
-              </div>
             </div>
 
             <div className="md:col-span-2">
-              <div className="mb-4">
-                <label className="block text-sm text-gray-700 mb-1">
-                  Full Name
-                </label>
-                <input
-                  name="fullName"
-                  value={form.fullName}
-                  onChange={handleChange}
-                  className="input-field w-full"
-                />
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm text-gray-700 mb-1">
-                  Phone
-                </label>
-                <input
-                  name="phone"
-                  value={form.phone}
-                  onChange={handleChange}
-                  className="input-field w-full"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">
+                    Name
+                  </p>
+                  <p className="text-sm font-medium text-gray-800">
+                    {profileInfo.fullName}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">
+                    Phone Number
+                  </p>
+                  <p className="text-sm font-medium text-gray-800">
+                    {profileInfo.phone}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">
+                    ID Type
+                  </p>
+                  <p className="text-sm font-medium text-gray-800 capitalize">
+                    {String(profileInfo.idType).replaceAll("_", " ")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">
+                    Date Registered
+                  </p>
+                  <p className="text-sm font-medium text-gray-800">
+                    {profileInfo.createdAt}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">
+                    Email
+                  </p>
+                  <p className="text-sm font-medium text-gray-800 break-all">
+                    {profileInfo.email}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">
+                    Role
+                  </p>
+                  <p className="text-sm font-medium text-gray-800 capitalize">
+                    {profileInfo.role}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">
+                    ID Number
+                  </p>
+                  <p className="text-sm font-medium text-gray-800">
+                    {profileInfo.idNumber}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">
+                    Verification
+                  </p>
+                  <p
+                    className={`text-sm font-semibold ${
+                      profileInfo.verification === "Verified"
+                        ? "text-green-700"
+                        : "text-amber-700"
+                    }`}
+                  >
+                    {profileInfo.verification}
+                  </p>
+                </div>
               </div>
 
               <div className="flex space-x-2">
                 <button
-                  onClick={handleSave}
+                  onClick={openEditModal}
                   className="btn-primary"
                   disabled={loading || exporting}
                 >
-                  Save
+                  Edit Profile
                 </button>
+
+                {(user?.role === "renter" || user?.role === "owner") && (
+                  <button
+                    type="button"
+                    onClick={handleReturnDashboard}
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-60"
+                    disabled={loading || exporting}
+                  >
+                    Return to Dashboard
+                  </button>
+                )}
 
                 {user?.role === "admin" && (
                   <button
@@ -491,6 +654,123 @@ const ProfilePage = () => {
           </div>
         </div>
       </div>
+
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-2xl">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Edit Profile
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">
+                  Full Name
+                </label>
+                <input
+                  name="fullName"
+                  value={editForm.fullName}
+                  onChange={handleEditChange}
+                  className="input-field w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">
+                  Phone Number
+                </label>
+                <input
+                  name="phone"
+                  value={editForm.phone}
+                  onChange={handleEditChange}
+                  className="input-field w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">
+                  Email
+                </label>
+                <input
+                  name="email"
+                  type="email"
+                  value={editForm.email}
+                  onChange={handleEditChange}
+                  className="input-field w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-700 mb-1">
+                  Profile Picture
+                </label>
+                <div className="mb-3 flex items-center gap-3">
+                  <div className="h-24 w-16 rounded-lg overflow-hidden bg-gray-100 border border-gray-200 flex items-center justify-center">
+                    {selectedAvatarPreviewUrl ? (
+                      <img
+                        src={selectedAvatarPreviewUrl}
+                        alt="New avatar preview"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : profileInfo.profilePicture !== "-" ? (
+                      <img
+                        src={profileInfo.profilePicture}
+                        alt="Current avatar"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-[10px] text-gray-500 text-center px-1">
+                        No photo
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-600">
+                    {selectedAvatarPreviewUrl
+                      ? "Previewing selected photo"
+                      : "Current profile photo"}
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFile}
+                    className="sr-only"
+                  />
+                  <div className="inline-flex items-center px-3 py-2 rounded-md bg-primary-50 text-primary-700 text-sm font-semibold border border-transparent hover:bg-primary-100 transition">
+                    Change photo
+                  </div>
+                </label>
+                {selectedAvatarFile && (
+                  <p className="mt-2 text-xs text-gray-600">
+                    Selected: {selectedAvatarFile.name}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveProfile}
+                className="btn-primary"
+                disabled={loading}
+              >
+                {loading ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Footer />
     </div>
   );

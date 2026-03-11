@@ -1,5 +1,5 @@
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Search,
@@ -16,16 +16,26 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
 const HomePage = () => {
-  const { isAuthenticated } = useAuth();
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const dashboardPath = user?.role === "admin" ? "/admin" : "/dashboard";
 
   const handleBrowseListings = () => {
-    if (isAuthenticated) {
+    if (user) {
       navigate("/listings");
     } else {
       navigate("/login");
     }
   };
+
+  const handleGetStarted = () => {
+    if (loading) {
+      return;
+    }
+
+    navigate(user ? dashboardPath : "/register");
+  };
+
   const features = [
     {
       icon: Search,
@@ -118,13 +128,14 @@ const HomePage = () => {
                   <Search className="inline h-5 w-5 mr-2" />
                   Browse Listings
                 </button>
-                <Link
-                  to="/register"
+                <button
+                  onClick={handleGetStarted}
+                  disabled={loading}
                   className="btn-outline border-white text-white hover:bg-white hover:text-primary-600"
                 >
                   Get Started
                   <ArrowRight className="inline h-5 w-5 ml-2" />
-                </Link>
+                </button>
               </div>
             </motion.div>
 
@@ -297,12 +308,13 @@ const HomePage = () => {
               house
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Link
-                to="/register"
+              <button
+                onClick={handleGetStarted}
+                disabled={loading}
                 className="btn-primary bg-white text-primary-600 hover:bg-gray-100"
               >
-                Sign Up Now
-              </Link>
+                {user ? "Go to Dashboard" : "Sign Up Now"}
+              </button>
               <button
                 onClick={handleBrowseListings}
                 className="btn-outline border-white text-white hover:bg-white hover:text-primary-600"

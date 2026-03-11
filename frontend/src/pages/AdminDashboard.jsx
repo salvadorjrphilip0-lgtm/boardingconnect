@@ -14,6 +14,7 @@ import {
   listingService,
   reviewService,
   websiteReviewService,
+  authService,
 } from "../services/api";
 import AdminSidebar from "../components/AdminSidebar";
 import Footer from "../components/Footer";
@@ -67,6 +68,13 @@ const AdminDashboard = () => {
   const [modalImageList, setModalImageList] = useState([]);
   const [modalImageIndex, setModalImageIndex] = useState(0);
 
+  // Password Reset States
+  const [passwordResetRequests, setPasswordResetRequests] = useState([]);
+  const [passwordResetLoading, setPasswordResetLoading] = useState(false);
+  const [selectedResetRequest, setSelectedResetRequest] = useState(null);
+  const [resetReasonModal, setResetReasonModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+
   // Helper: resolve owner full name from possible shapes
   const resolveOwnerName = (listing) => {
     if (!listing) return "Unknown";
@@ -118,9 +126,62 @@ const AdminDashboard = () => {
     return "-";
   };
 
+  // Password Reset Functions
+  const fetchPasswordResetRequests = async ({ silent = false } = {}) => {
+    try {
+      if (!silent) {
+        setPasswordResetLoading(true);
+      }
+      const data = await authService.getPendingPasswordResets();
+      setPasswordResetRequests(data.requests || []);
+    } catch (error) {
+      if (!silent) {
+        toast.error("Failed to fetch password reset requests");
+      }
+      console.error("Error fetching password resets:", error);
+    } finally {
+      if (!silent) {
+        setPasswordResetLoading(false);
+      }
+    }
+  };
+
+  const handleApprovePasswordReset = async (resetRequestId) => {
+    try {
+      await authService.approvePasswordReset(resetRequestId);
+      toast.success("Password reset approved");
+      fetchPasswordResetRequests();
+    } catch (error) {
+      toast.error("Failed to approve password reset");
+    }
+  };
+
+  const handleRejectPasswordReset = async (resetRequestId) => {
+    try {
+      await authService.rejectPasswordReset(resetRequestId, rejectReason);
+      toast.success("Password reset rejected");
+      setResetReasonModal(false);
+      setRejectReason("");
+      setSelectedResetRequest(null);
+      fetchPasswordResetRequests();
+    } catch (error) {
+      toast.error("Failed to reject password reset");
+    }
+  };
+
   useEffect(() => {
     fetchAdminData();
   }, []);
+
+  useEffect(() => {
+    if (!user || user.role !== "admin") return;
+
+    const intervalId = setInterval(() => {
+      fetchPasswordResetRequests({ silent: true });
+    }, 12000);
+
+    return () => clearInterval(intervalId);
+  }, [user]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -140,6 +201,7 @@ const AdminDashboard = () => {
     try {
       const usersData = await adminService.getUsers();
       setUsers(usersData);
+      fetchPasswordResetRequests({ silent: true });
       setStats({
         totalUsers: usersData.length,
         totalListings: 0,
@@ -909,6 +971,115 @@ const AdminDashboard = () => {
                     </tbody>
                   </table>
                 </div>
+
+                <div className="mt-8 border-t border-gray-200 pt-6">
+                  <h3 className="text-lg font-bold text-gray-900 mb-4">
+                    Password Reset Requests
+                  </h3>
+
+                  {passwordResetLoading ? (
+                    <div className="flex items-center justify-center py-10">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    </div>
+                  ) : passwordResetRequests.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Name
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Email
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Phone
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Role
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Request Date
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Reset Status
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Actions
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {passwordResetRequests.map((request) => (
+                            <tr key={request.id}>
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">
+                                {request.users?.full_name || "Unknown User"}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                                {request.users?.email || "No email"}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                                {request.users?.phone || "No phone"}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap capitalize">
+                                {request.users?.role || "unknown"}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                                {new Date(request.created_at).toLocaleString()}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                {request.status === "approved" ? (
+                                  <span className="px-2 py-1 inline-flex text-xs font-semibold rounded-full bg-green-100 text-green-800 border border-green-200">
+                                    Approved
+                                  </span>
+                                ) : request.status === "rejected" ? (
+                                  <span className="px-2 py-1 inline-flex text-xs font-semibold rounded-full bg-red-100 text-red-800 border border-red-200">
+                                    Declined
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-1 inline-flex text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                    Pending
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                {request.status === "pending" ? (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() =>
+                                        handleApprovePasswordReset(request.id)
+                                      }
+                                      className="px-3 py-1.5 rounded-md bg-green-600 text-white hover:bg-green-700 text-xs"
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedResetRequest(request);
+                                        setResetReasonModal(true);
+                                      }}
+                                      className="px-3 py-1.5 rounded-md bg-red-600 text-white hover:bg-red-700 text-xs"
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-gray-400">
+                                    —
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-gray-600 text-center py-6">
+                      No password reset requests yet
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Listing Verification */}
@@ -1542,6 +1713,66 @@ const AdminDashboard = () => {
                 {modalImageIndex + 1} / {modalImageList.length}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Reject Password Reset Modal */}
+      {resetReasonModal && selectedResetRequest && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+          onClick={() => {
+            setResetReasonModal(false);
+            setSelectedResetRequest(null);
+            setRejectReason("");
+          }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-900">
+                Reject Password Reset Request
+              </h3>
+              <p className="text-sm text-gray-600 mt-1">
+                {selectedResetRequest.users?.full_name || "User"}
+              </p>
+            </div>
+
+            <div className="px-6 py-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Rejection Reason (optional)
+              </label>
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={3}
+                className="input-field"
+                placeholder="Enter reason for rejection..."
+              />
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setResetReasonModal(false);
+                  setSelectedResetRequest(null);
+                  setRejectReason("");
+                }}
+                className="px-4 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() =>
+                  handleRejectPasswordReset(selectedResetRequest.id)
+                }
+                className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700"
+              >
+                Confirm Reject
+              </button>
+            </div>
           </div>
         </div>
       )}

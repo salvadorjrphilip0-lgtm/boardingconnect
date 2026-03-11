@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Home, MapPin, Users, Edit, Trash2, Star } from "lucide-react";
+import {
+  Home,
+  MapPin,
+  Users,
+  Edit,
+  Trash2,
+  Star,
+  Search,
+  Filter,
+} from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   listingService,
@@ -10,6 +19,7 @@ import {
 } from "../services/api";
 import OwnerSidebar from "../components/OwnerSidebar";
 import RenterSidebar from "../components/RenterSidebar";
+import ListingCard from "../components/ListingCard";
 import Footer from "../components/Footer";
 import toast from "react-hot-toast";
 import {
@@ -59,7 +69,16 @@ const DashboardPage = () => {
     applications: 0,
     agreements: 0,
   });
+  const [browseFilters, setBrowseFilters] = useState({
+    search: "",
+    location: "",
+    minPrice: "",
+    maxPrice: "",
+    verified: false,
+  });
   const [myListings, setMyListings] = useState([]);
+  const [renterBrowseListings, setRenterBrowseListings] = useState([]);
+  const [renterBrowseLoading, setRenterBrowseLoading] = useState(false);
   const [recentApplications, setRecentApplications] = useState([]);
   const [renterAgreements, setRenterAgreements] = useState([]);
   const [ownerAgreements, setOwnerAgreements] = useState([]);
@@ -75,6 +94,7 @@ const DashboardPage = () => {
     // ensures each account sees only their own listings/applications.
     if (!user) {
       setMyListings([]);
+      setRenterBrowseListings([]);
       setRecentApplications([]);
       setRenterAgreements([]);
       setOwnerAgreements([]);
@@ -117,6 +137,8 @@ const DashboardPage = () => {
         const listings = await listingService.getAll({ ownerId: user.id });
         setMyListings(listings);
         setStats((prev) => ({ ...prev, listings: listings.length }));
+      } else if (user.role === "renter") {
+        await fetchRenterBrowseListings();
       }
 
       // Applications fetched are scoped to the authenticated user on the server
@@ -196,6 +218,63 @@ const DashboardPage = () => {
     }
   };
 
+  const handleBrowseFilterChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setBrowseFilters((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const handleBrowseFilterSubmit = (e) => {
+    e.preventDefault();
+    fetchRenterBrowseListings();
+  };
+
+  const fetchRenterBrowseListings = async (activeFilters = browseFilters) => {
+    if (!user || user.role !== "renter") return;
+
+    setRenterBrowseLoading(true);
+    try {
+      const requestFilters = {
+        ...activeFilters,
+        search: "",
+      };
+
+      let data = await listingService.getAll(requestFilters);
+
+      const searchText = String(activeFilters.search || "")
+        .trim()
+        .toLowerCase();
+
+      if (searchText) {
+        data = data.filter((listing) => {
+          const targetText = [
+            listing?.title,
+            listing?.description,
+            listing?.owner?.fullName,
+            listing?.owner?.full_name,
+            listing?.owner?.name,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          return targetText.includes(searchText);
+        });
+      }
+
+      data = data.filter((listing) => Number(listing?.capacity) > 0);
+
+      setRenterBrowseListings(data);
+    } catch (error) {
+      console.error("Failed to fetch dashboard renter listings:", error);
+      setRenterBrowseListings([]);
+    } finally {
+      setRenterBrowseLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -224,13 +303,93 @@ const DashboardPage = () => {
           {/* Browse Listings + Totals */}
           <div className="card p-6 mb-8">
             <h2 className="text-xl font-bold text-gray-900 mb-4">
-              Browse Listings
+              Search Boarding Houses
             </h2>
-            <div className="mb-6">
-              <Link to="/listings" className="btn-outline">
-                Find Here ...
-              </Link>
-            </div>
+
+            {user?.role === "renter" ? (
+              <form onSubmit={handleBrowseFilterSubmit} className="mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="md:col-span-2">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      <input
+                        type="text"
+                        name="search"
+                        value={browseFilters.search}
+                        onChange={handleBrowseFilterChange}
+                        placeholder="Search by owner/title/description..."
+                        className="input-field pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="relative">
+                      <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      <input
+                        type="text"
+                        name="location"
+                        value={browseFilters.location}
+                        onChange={handleBrowseFilterChange}
+                        placeholder="Location"
+                        className="input-field pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex space-x-2">
+                    <input
+                      type="number"
+                      name="minPrice"
+                      min="0"
+                      value={browseFilters.minPrice}
+                      onChange={handleBrowseFilterChange}
+                      placeholder="Min Price"
+                      className="input-field"
+                    />
+                    <input
+                      type="number"
+                      name="maxPrice"
+                      min="0"
+                      value={browseFilters.maxPrice}
+                      onChange={handleBrowseFilterChange}
+                      placeholder="Max Price"
+                      className="input-field"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mt-4">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      name="verified"
+                      id="dashboard-verified"
+                      checked={browseFilters.verified}
+                      onChange={handleBrowseFilterChange}
+                      className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                    />
+                    <label
+                      htmlFor="dashboard-verified"
+                      className="ml-2 text-sm text-gray-700"
+                    >
+                      Verified listings only
+                    </label>
+                  </div>
+
+                  <button type="submit" className="btn-primary">
+                    <Filter className="inline h-5 w-5 mr-2" />
+                    Apply Filters
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="mb-6">
+                <Link to="/listings" className="btn-outline">
+                  Find Here ...
+                </Link>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
@@ -251,6 +410,26 @@ const DashboardPage = () => {
                 </p>
               </div>
             </div>
+
+            {user?.role === "renter" && (
+              <div className="mt-6">
+                {renterBrowseLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
+                  </div>
+                ) : renterBrowseListings.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {renterBrowseListings.map((listing) => (
+                      <ListingCard key={listing.id} listing={listing} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-10">
+                    <p className="text-gray-600 text-lg">No listing found.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* My Listings (for owners) */}
@@ -517,32 +696,123 @@ const DashboardPage = () => {
               </h2>
               {user.role === "renter" ? (
                 renterAgreements.length > 0 ? (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {renterAgreements.map((agreement) => {
                       const paymentStatus = getPaymentStatusBadge(agreement);
                       const timeStatus = getTimeStatusBadge(agreement);
+                      const listing = agreement.listing;
+                      const listingImages = getListingImages(listing);
+                      const listingAmenities = getListingAmenities(listing);
+                      const listingCapacity = Number(listing?.capacity) || 0;
+                      const totalRatings =
+                        Number(
+                          listing?.totalRatings || listing?.total_ratings,
+                        ) || 0;
+                      const averageRating =
+                        Number(
+                          listing?.averageRating ?? listing?.average_rating,
+                        ) || 0;
+                      const roundedStars = Math.min(
+                        5,
+                        Math.max(0, Math.floor(averageRating)),
+                      );
+                      const visualStars = `${"★".repeat(roundedStars)}${"☆".repeat(5 - roundedStars)}`;
 
                       return (
-                        <div key={agreement.id} className="border rounded p-3">
-                          <p className="font-semibold text-gray-900">
-                            {agreement.listing?.title ||
-                              "Unknown Boarding House"}
-                          </p>
-                          <p className="text-xs text-gray-500 mb-2">
-                            {agreement.listing?.location || "No location"}
-                          </p>
+                        <div
+                          key={agreement.id}
+                          className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex gap-4">
+                            {/* Boarding House Image */}
+                            <div className="w-24 h-24 rounded-lg overflow-hidden bg-gradient-to-r from-primary-400 to-primary-600 flex-shrink-0">
+                              {listingImages.length > 0 ? (
+                                <img
+                                  src={listingImages[0]}
+                                  alt={listing?.title || "Boarding house"}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <Home className="h-8 w-8 text-white/70" />
+                                </div>
+                              )}
+                            </div>
 
-                          <div className="flex flex-wrap gap-2">
-                            <span
-                              className={`px-3 py-1 rounded-full text-xs font-semibold border ${paymentStatus.className}`}
-                            >
-                              {paymentStatus.text}
-                            </span>
-                            <span
-                              className={`px-3 py-1 rounded-full text-xs font-semibold border ${timeStatus.className}`}
-                            >
-                              {timeStatus.text}
-                            </span>
+                            {/* Details */}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-900 text-sm line-clamp-1">
+                                {listing?.title || "Unknown Boarding House"}
+                              </p>
+                              <div className="flex items-center text-xs text-gray-600 mt-1">
+                                <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
+                                <span className="line-clamp-1">
+                                  {listing?.location || "No location"}
+                                </span>
+                              </div>
+
+                              {/* Price and Capacity */}
+                              <div className="mt-2 flex items-center gap-3 text-xs">
+                                <span className="font-semibold text-primary-600">
+                                  ₱{listing?.price}/month
+                                </span>
+                                <span className="text-gray-600 inline-flex items-center">
+                                  <Users className="h-3 w-3 mr-1" />
+                                  {listingCapacity} slot
+                                  {listingCapacity === 1 ? "" : "s"}
+                                </span>
+                              </div>
+
+                              {/* Rating */}
+                              {totalRatings > 0 && (
+                                <div className="mt-2 flex items-center text-xs text-gray-600">
+                                  <Star className="h-3 w-3 mr-1 text-yellow-500" />
+                                  <span className="text-yellow-500 mr-1">
+                                    {visualStars}
+                                  </span>
+                                  <span>
+                                    {averageRating.toFixed(1)}/5 •{" "}
+                                    {totalRatings} rating
+                                    {totalRatings !== 1 ? "s" : ""}
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Amenities */}
+                              {listingAmenities.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  {listingAmenities
+                                    .slice(0, 2)
+                                    .map((amenity, index) => (
+                                      <span
+                                        key={`${agreement.id}-amenity-${index}`}
+                                        className="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded border border-gray-200"
+                                      >
+                                        {amenity}
+                                      </span>
+                                    ))}
+                                  {listingAmenities.length > 2 && (
+                                    <span className="text-xs text-gray-500 px-1 py-0.5">
+                                      +{listingAmenities.length - 2} more
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Status Badges */}
+                              <div className="flex flex-wrap gap-2 mt-3">
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-semibold border ${paymentStatus.className}`}
+                                >
+                                  {paymentStatus.text}
+                                </span>
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-semibold border ${timeStatus.className}`}
+                                >
+                                  {timeStatus.text}
+                                </span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       );

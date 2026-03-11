@@ -40,21 +40,29 @@ export const createOwnerReview = async (req, res) => {
       });
     }
 
-    // Only allow reviews from renters with confirmed/active agreement
+    // Allow reviews from renters who already applied/are in agreement flow
+    // for this owner+listing (pending and confirmed/active are accepted).
     const { data: agreement, error: agreementError } = await supabase
       .from("agreements")
       .select("id, status")
       .eq("listing_id", listing_id)
       .eq("owner_id", owner_id)
       .eq("renter_id", renter_id)
-      .in("status", ["confirmed", "active"])
+      .in("status", [
+        "pending",
+        "pending_owner",
+        "pending_renter",
+        "confirmed",
+        "active",
+      ])
       .maybeSingle();
 
     if (agreementError) throw agreementError;
 
     if (!agreement) {
       return res.status(403).json({
-        message: "You can only review an owner after confirming your agreement",
+        message:
+          "You can only review an owner after applying for this boarding house",
       });
     }
 
@@ -141,5 +149,65 @@ export const getOwnerReviews = async (req, res) => {
   } catch (error) {
     console.error("Error fetching owner reviews:", error);
     res.status(500).json({ message: "Error fetching owner reviews" });
+  }
+};
+
+// Admin: Get all owner profile reviews
+export const getAllOwnerReviews = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit, 10) || 20);
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    const { data, error, count } = await supabase
+      .from("owner_reviews")
+      .select(
+        `
+        id,
+        owner_id,
+        listing_id,
+        renter_id,
+        rating,
+        title,
+        comment,
+        created_at,
+        users:renter_id (id, full_name, profile_picture),
+        listings:listing_id (id, title),
+        owners:owner_id (id, full_name, profile_picture)
+      `,
+        { count: "exact" },
+      )
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+
+    const total = Number(count) || 0;
+    const averageRating =
+      (data || []).length > 0
+        ? Number(
+            (
+              (data || []).reduce(
+                (sum, row) => sum + (Number(row.rating) || 0),
+                0,
+              ) / (data || []).length
+            ).toFixed(1),
+          )
+        : 0;
+
+    res.json({
+      reviews: data || [],
+      average_rating: averageRating,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching all owner reviews:", error);
+    res.status(500).json({ message: "Error fetching owner profile reviews" });
   }
 };

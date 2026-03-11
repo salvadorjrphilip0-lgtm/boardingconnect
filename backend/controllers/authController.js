@@ -247,7 +247,7 @@ export const getCurrentUser = async (req, res) => {
     const { data: user, error } = await supabase
       .from("users")
       .select(
-        "id, email, full_name, phone, role, verified, profile_picture, id_type, id_number, id_image",
+        "id, email, full_name, phone, role, verified, profile_picture, id_type, id_number, id_image, created_at",
       )
       .eq("id", req.user.id)
       .single();
@@ -265,6 +265,7 @@ export const getCurrentUser = async (req, res) => {
       idType: user.id_type || null,
       idNumber: user.id_number || null,
       idImage: user.id_image || null,
+      createdAt: user.created_at || null,
     });
   } catch (error) {
     console.error("Get current user error:", error);
@@ -272,14 +273,34 @@ export const getCurrentUser = async (req, res) => {
   }
 };
 
-// Update current user profile (full name, phone)
+// Update current user profile (full name, phone, email)
 export const updateProfile = async (req, res) => {
   try {
-    const { fullName, phone } = req.body;
+    const { fullName, phone, email } = req.body;
 
     const updates = {};
     if (fullName !== undefined) updates.full_name = fullName;
     if (phone !== undefined) updates.phone = phone;
+    if (email !== undefined) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      if (!normalizedEmail) {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      const { data: existingUser, error: existingErr } = await supabase
+        .from("users")
+        .select("id")
+        .eq("email", normalizedEmail)
+        .neq("id", req.user.id)
+        .maybeSingle();
+
+      if (existingErr) throw existingErr;
+      if (existingUser) {
+        return res.status(400).json({ message: "Email is already in use" });
+      }
+
+      updates.email = normalizedEmail;
+    }
 
     const { data, error } = await supabase
       .from("users")
@@ -443,5 +464,258 @@ export const uploadAvatarMultipart = async (req, res) => {
     res.status(500).json({
       message: error?.message || "Failed to upload avatar",
     });
+  }
+};
+
+// Verify email and phone for password reset
+export const verifyAccountForPasswordReset = async (req, res) => {
+  try {
+    const { email, phone } = req.body;
+
+    if (!email || !phone) {
+      return res.status(400).json({ message: "Email and phone are required" });
+    }
+
+    // Search for user by email and phone
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("id, email, full_name, phone, role")
+      .eq("email", email.toLowerCase().trim())
+      .eq("phone", phone.trim())
+      .maybeSingle();
+
+    if (error) {
+      console.error("Verify account error:", error);
+      throw error;
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        message: "The email/phone number is not in the list",
+      });
+    }
+
+    // Return user details for confirmation
+    res.json({
+      message: "Account verified",
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.full_name,
+        phone: user.phone,
+        role: user.role,
+      },
+    });
+  } catch (error) {
+    console.error("Verify account for password reset error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Request password reset (after email+phone verification)
+export const requestPasswordReset = async (req, res) => {
+  try {
+    const { userId, newPassword } = req.body;
+
+    if (!userId || !newPassword) {
+      return res.status(400).json({
+        message: "User ID and new password are required",
+      });
+    }
+
+    // Verify user exists
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (userError) throw userError;
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Create password reset request (pending admin approval)
+    const { data: resetRequest, error: resetError } = await supabase
+      .from("password_reset_requests")
+      .insert([
+        {
+          user_id: userId,
+          new_password: hashedPassword,
+          status: "pending",
+          verified_at: new Date().toISOString(),
+        },
+      ])
+      .select()
+      .single();
+
+    if (resetError) throw resetError;
+
+    res.json({
+      message:
+        "Password reset request submitted. Waiting for admin verification.",
+      requestId: resetRequest.id,
+    });
+  } catch (error) {
+    console.error("Request password reset error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Admin: Get all password reset requests
+export const getPendingPasswordResets = async (req, res) => {
+  try {
+    // Verify admin role
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const { data: resetRequests, error } = await supabase
+      .from("password_reset_requests")
+      .select(
+        `
+        id,
+        user_id,
+        status,
+        verified_at,
+        approved_at,
+        rejection_reason,
+        created_at
+      `,
+      )
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const userIds = Array.from(
+      new Set(
+        (resetRequests || []).map((request) => request.user_id).filter(Boolean),
+      ),
+    );
+
+    let userById = {};
+
+    if (userIds.length > 0) {
+      const { data: users, error: usersError } = await supabase
+        .from("users")
+        .select("id, email, full_name, phone, role")
+        .in("id", userIds);
+
+      if (usersError) throw usersError;
+
+      userById = (users || []).reduce((acc, user) => {
+        acc[user.id] = user;
+        return acc;
+      }, {});
+    }
+
+    const requestsWithUsers = (resetRequests || []).map((request) => ({
+      ...request,
+      users: userById[request.user_id] || null,
+    }));
+
+    res.json({
+      message: "Password reset requests retrieved",
+      requests: requestsWithUsers,
+    });
+  } catch (error) {
+    console.error("Get pending password resets error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Admin: Approve password reset request
+export const approvePasswordReset = async (req, res) => {
+  try {
+    // Verify admin role
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const { resetRequestId } = req.body;
+
+    if (!resetRequestId) {
+      return res.status(400).json({ message: "Reset request ID is required" });
+    }
+
+    // Get the reset request
+    const { data: resetRequest, error: fetchError } = await supabase
+      .from("password_reset_requests")
+      .select("*")
+      .eq("id", resetRequestId)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!resetRequest) {
+      return res.status(404).json({ message: "Reset request not found" });
+    }
+
+    // Update user password and mark request as approved
+    const { error: updateError } = await supabase
+      .from("users")
+      .update({ password: resetRequest.new_password })
+      .eq("id", resetRequest.user_id);
+
+    if (updateError) throw updateError;
+
+    // Mark reset request as approved
+    const { error: approveError } = await supabase
+      .from("password_reset_requests")
+      .update({
+        status: "approved",
+        approved_by: req.user.id,
+        approved_at: new Date().toISOString(),
+      })
+      .eq("id", resetRequestId);
+
+    if (approveError) throw approveError;
+
+    res.json({
+      message: "Password reset approved successfully",
+    });
+  } catch (error) {
+    console.error("Approve password reset error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Admin: Reject password reset request
+export const rejectPasswordReset = async (req, res) => {
+  try {
+    // Verify admin role
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const { resetRequestId, rejectionReason } = req.body;
+
+    if (!resetRequestId) {
+      return res.status(400).json({ message: "Reset request ID is required" });
+    }
+
+    // Mark reset request as rejected
+    const { error } = await supabase
+      .from("password_reset_requests")
+      .update({
+        status: "rejected",
+        rejection_reason: rejectionReason || "Rejected by admin",
+        approved_by: req.user.id,
+        approved_at: new Date().toISOString(),
+      })
+      .eq("id", resetRequestId)
+      .eq("status", "pending");
+
+    if (error) throw error;
+
+    res.json({
+      message: "Password reset request rejected",
+    });
+  } catch (error) {
+    console.error("Reject password reset error:", error);
+    res.status(500).json({ message: "Server error" });
   }
 };

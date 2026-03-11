@@ -176,6 +176,20 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Password Reset Requests Table (stores pending password reset requests)
+CREATE TABLE IF NOT EXISTS password_reset_requests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  new_password VARCHAR(255) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  verified_at TIMESTAMP WITH TIME ZONE,
+  approved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  approved_at TIMESTAMP WITH TIME ZONE,
+  rejection_reason TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- =========================
 -- Indexes
 -- =========================
@@ -234,6 +248,10 @@ CREATE INDEX IF NOT EXISTS idx_reports_generated_by ON reports(generated_by);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_changed_by ON activity_logs(changed_by);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_requests_user ON password_reset_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_password_reset_requests_status ON password_reset_requests(status);
+CREATE INDEX IF NOT EXISTS idx_password_reset_requests_created_at ON password_reset_requests(created_at);
 
 -- =========================
 -- Trigger for updated_at

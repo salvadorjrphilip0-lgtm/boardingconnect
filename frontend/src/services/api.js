@@ -93,6 +93,45 @@ export const authService = {
     });
     return response.data;
   },
+
+  // New password reset flow
+  verifyAccountForPasswordReset: async (email, phone) => {
+    const response = await api.post("/auth/verify-account-for-reset", {
+      email,
+      phone,
+    });
+    return response.data;
+  },
+
+  requestPasswordReset: async (userId, newPassword) => {
+    const response = await api.post("/auth/request-password-reset", {
+      userId,
+      newPassword,
+    });
+    return response.data;
+  },
+
+  // Admin password reset management
+  getPendingPasswordResets: async () => {
+    const response = await api.get("/auth/admin/password-reset-requests");
+    return response.data;
+  },
+
+  approvePasswordReset: async (resetRequestId) => {
+    const response = await api.put(
+      "/auth/admin/password-reset-requests/approve",
+      { resetRequestId },
+    );
+    return response.data;
+  },
+
+  rejectPasswordReset: async (resetRequestId, rejectionReason) => {
+    const response = await api.put(
+      "/auth/admin/password-reset-requests/reject",
+      { resetRequestId, rejectionReason },
+    );
+    return response.data;
+  },
 };
 
 // Listing Services
@@ -395,6 +434,13 @@ export const ownerReviewService = {
 
   getByOwner: async (ownerId) => {
     const response = await api.get(`/owner-reviews/${ownerId}`);
+    return response.data;
+  },
+
+  getAll: async (page = 1, limit = 20) => {
+    const response = await api.get("/owner-reviews/admin/all", {
+      params: { page, limit },
+    });
     return response.data;
   },
 };

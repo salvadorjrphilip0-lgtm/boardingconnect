@@ -51,6 +51,9 @@ export const AuthProvider = ({ children }) => {
           role: data.role,
           verified: data.verified,
           profilePicture: data.profilePicture || data.profile_picture || null,
+          idType: data.idType || data.id_type || null,
+          idNumber: data.idNumber || data.id_number || null,
+          createdAt: data.createdAt || data.created_at || null,
         };
         setUser(serverUser);
         localStorage.setItem("user", JSON.stringify(serverUser));

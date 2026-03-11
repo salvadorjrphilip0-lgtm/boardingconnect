@@ -10,6 +10,11 @@ import {
   updateProfile,
   uploadAvatar,
   uploadAvatarMultipart,
+  verifyAccountForPasswordReset,
+  requestPasswordReset,
+  getPendingPasswordResets,
+  approvePasswordReset,
+  rejectPasswordReset,
 } from "../controllers/authController.js";
 import { authenticateToken } from "../middleware/auth.js";
 
@@ -53,7 +58,7 @@ router.post(
   "/register",
   upload.single("idImage"),
   registerValidation,
-  register
+  register,
 );
 router.post("/login", loginValidation, login);
 router.put("/me", authenticateToken, updateProfile);
@@ -62,10 +67,31 @@ router.post(
   "/me/avatar/upload",
   authenticateToken,
   upload.single("file"),
-  uploadAvatarMultipart
+  uploadAvatarMultipart,
 );
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
 router.get("/me", authenticateToken, getCurrentUser);
+
+// New password reset flow endpoints
+router.post("/verify-account-for-reset", verifyAccountForPasswordReset);
+router.post("/request-password-reset", requestPasswordReset);
+
+// Admin password reset management endpoints
+router.get(
+  "/admin/password-reset-requests",
+  authenticateToken,
+  getPendingPasswordResets,
+);
+router.put(
+  "/admin/password-reset-requests/approve",
+  authenticateToken,
+  approvePasswordReset,
+);
+router.put(
+  "/admin/password-reset-requests/reject",
+  authenticateToken,
+  rejectPasswordReset,
+);
 
 export default router;

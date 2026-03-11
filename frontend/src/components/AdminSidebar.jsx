@@ -156,7 +156,13 @@ const AdminSidebar = () => {
               </div>
             )}
           </div>
-          <p className="text-sm text-gray-600 mt-2">{user?.fullName}</p>
+          <Link
+            to="/profile"
+            onClick={() => isMobile && setIsVisible(false)}
+            className="text-sm text-primary-700 mt-2 inline-block hover:text-primary-800 hover:underline"
+          >
+            {user?.fullName}
+          </Link>
           <p className="text-xs text-gray-500 mt-1">
             {formatPhoneNumber(user?.phone || user?.phoneNumber)}
           </p>

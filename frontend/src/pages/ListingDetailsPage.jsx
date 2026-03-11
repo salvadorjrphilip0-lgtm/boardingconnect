@@ -971,7 +971,9 @@ const ListingDetailsPage = () => {
                   placeholder="Write your comment..."
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
-
+                  <p className="mt-1 text-xs text-gray-500">
+                       You can review once you’ve applied for this listing.
+                  </p>
                 <div className="mt-3 flex justify-end">
                   <button
                     type="button"
@@ -990,13 +992,15 @@ const ListingDetailsPage = () => {
                 user.role === "renter" &&
                 user.id !== listing.ownerId &&
                 hasApplied && (
-                  <button
-                    type="button"
-                    onClick={() => setShowReviewForm((prev) => !prev)}
-                    className="px-4 py-2 rounded-lg border border-primary-300 text-primary-700 hover:bg-primary-50"
-                  >
-                    {showReviewForm ? "Cancel Review" : "Review"}
-                  </button>
+                  <div className="flex flex-col items-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowReviewForm((prev) => !prev)}
+                      className="px-4 py-2 rounded-lg border border-primary-300 text-primary-700 hover:bg-primary-50"
+                    >
+                      {showReviewForm ? "Cancel Review" : "Review"}
+                    </button>
+                  </div>
                 )}
               <button
                 type="button"

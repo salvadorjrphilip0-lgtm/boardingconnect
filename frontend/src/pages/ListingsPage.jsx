@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { Search, Filter, MapPin } from "lucide-react";
 import { listingService } from "../services/api";
@@ -9,6 +10,7 @@ import RenterSidebar from "../components/RenterSidebar";
 import OwnerSidebar from "../components/OwnerSidebar";
 
 const ListingsPage = () => {
+  const location = useLocation();
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -22,6 +24,19 @@ const ListingsPage = () => {
   const { user } = useAuth();
 
   useEffect(() => {
+    const query = new URLSearchParams(location.search);
+
+    setFilters((prev) => ({
+      ...prev,
+      search: query.get("search") || "",
+      location: query.get("location") || "",
+      minPrice: query.get("minPrice") || "",
+      maxPrice: query.get("maxPrice") || "",
+      verified: query.get("verified") === "true",
+    }));
+  }, [location.search]);
+
+  useEffect(() => {
     // Fetch listings when component mounts and whenever the authenticated
     // user changes (login/logout) or filters change. This prevents showing
     // stale data from a previous account session.
@@ -33,7 +48,34 @@ const ListingsPage = () => {
 
   const fetchListings = async () => {
     try {
-      let data = await listingService.getAll(filters);
+      const requestFilters = {
+        ...filters,
+        search: "",
+      };
+
+      let data = await listingService.getAll(requestFilters);
+
+      const searchText = String(filters.search || "")
+        .trim()
+        .toLowerCase();
+
+      if (searchText) {
+        data = data.filter((listing) => {
+          const targetText = [
+            listing?.title,
+            listing?.description,
+            listing?.owner?.fullName,
+            listing?.owner?.full_name,
+            listing?.owner?.name,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          return targetText.includes(searchText);
+        });
+      }
+
       // hide any listings with no remaining slots from renters
       if (user && user.role === "renter") {
         data = data.filter((l) => l.capacity > 0);
@@ -79,7 +121,7 @@ const ListingsPage = () => {
                   name="search"
                   value={filters.search}
                   onChange={handleFilterChange}
-                  placeholder="Search by name or description..."
+                  placeholder="Search by owner/title/description..."
                   className="input-field pl-10"
                 />
               </div>
@@ -158,9 +200,7 @@ const ListingsPage = () => {
           </div>
         ) : (
           <div className="text-center py-20">
-            <p className="text-gray-600 text-lg">
-              No listings found. Try adjusting your filters.
-            </p>
+            <p className="text-gray-600 text-lg">No listing found.</p>
           </div>
         )}
       </div>
