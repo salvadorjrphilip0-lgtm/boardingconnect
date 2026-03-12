@@ -71,7 +71,7 @@ const HomePage = () => {
     {
       name: "Earlyn Roxas",
       role: "Backend Developer",
-      image: "https://scontent.fceb9-1.fna.fbcdn.net/v/t39.30808-1/581928233_1878049833132319_8750242086102981519_n.jpg?stp=dst-jpg_s200x200_tt6&_nc_cat=109&ccb=1-7&_nc_sid=e99d92&_nc_eui2=AeHLiR0mFxi33aBhvhuBxJSh0_LCYdQK4tDT8sJh1Ari0AeQ2PZpZYCLazr7gPfQQi1T7WyO1aVYO6osW9ExPPsf&_nc_ohc=gAiNNV86UxoQ7kNvwG7c40k&_nc_oc=AdkqRxr1I1MAW-k83m3G15U25OdwhLPJtoPTyUV9-oCd10PFYV-qfoCwS0DFHMb5r1w&_nc_zt=24&_nc_ht=scontent.fceb9-1.fna&_nc_gid=JXIFQrByZ06cE77irNI10w&_nc_ss=8&oh=00_Afz14yyEFTqmpCWV0M2s9QtSFlHWm7qGdM_9oFgQkPot6Q&oe=69B7439F",
+      image: "https://scontent.fceb9-1.fna.fbcdn.net/v/t1.15752-9/626698435_2914888528871265_3008597147105141402_n.jpg?stp=dst-jpg_s640x640_tt6&_nc_cat=107&ccb=1-7&_nc_sid=0024fc&_nc_eui2=AeEFTGJ8i5x2aAb_Yt5kuV15KlJsZ9i5wy4qUmxn2LnDLp4Y9jno8Lq9tEdmaJkfLBbeHHcsmXcF3kUil8zfry9O&_nc_ohc=9CzLYxwf1h4Q7kNvwGVqYac&_nc_oc=AdkXMSIT3KfD7fqxcd9JPud72E1AYIEcv6KPbyibdZzkDhcDKxMOgCCF6zUROi7FFPY&_nc_zt=23&_nc_ht=scontent.fceb9-1.fna&_nc_ss=8&oh=03_Q7cD4wHazLBKxfDvyU-6Fc-uwgX7EHWVasf9DGc1BBIlr_CexA&oe=69D97490",
     },
     {
       name: "Ainnz Thryzen Yane",
@@ -81,7 +81,7 @@ const HomePage = () => {
     {
       name: "Mary Jane Asequia",
       role: "Frontend Developer",
-      image: "https://scontent.fceb3-1.fna.fbcdn.net/v/t39.30808-1/619612718_1619201439257573_3920197240010327381_n.jpg?stp=dst-jpg_s200x200_tt6&_nc_cat=101&ccb=1-7&_nc_sid=e99d92&_nc_eui2=AeGgPmuX4C_AmuB6SOQnaY5ctyNFBFAVSdu3I0UEUBVJ2-SgpoCbqE5AZlPVTMqrr5RFW4aPDx-JXgckaHdRRejA&_nc_ohc=10qwJ0QLW0IQ7kNvwHKWBrM&_nc_oc=AdlF1xbFIUB2J38E-E4bFdCFBWBffed-Tcp1luAlpll_WjRTrE84j4QkOO55oWq048U&_nc_zt=24&_nc_ht=scontent.fceb3-1.fna&_nc_gid=vdT-mComNvNA3W7iy4z72Q&_nc_ss=8&oh=00_AfyjpQRSJvGANLGz2WSPRYKIuZPR2G0mxTiE80tV1C7QWg&oe=69B7675E",
+      image: "https://scontent.fceb3-1.fna.fbcdn.net/v/t1.15752-9/646404031_26029606929983383_6623342040773455225_n.jpg?_nc_cat=105&ccb=1-7&_nc_sid=9f807c&_nc_eui2=AeH5sI6ICUS3snBdb6yhCiKQ80tP_J4OAeDzS0_8ng4B4MDmwi4STxVEFxXx0imYLhLw849p5lu0cLVGuBpIG9wq&_nc_ohc=YRF4ZGJbxqkQ7kNvwF5AJez&_nc_oc=AdkM_PH12kqs7hlzuBIS_bhPnViBfUoZfcOHzRWTKAx0Y7Sn6T1eWfFYsv5eYVRgvVo&_nc_zt=23&_nc_ht=scontent.fceb3-1.fna&_nc_ss=8&oh=03_Q7cD4wH0t_WyS-H3XKQkpkCshJfIIuTvqqCtW5G_cT5H0Wkf5A&oe=69D976A2",
     },
   ];
 
