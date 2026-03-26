@@ -121,15 +121,6 @@ const AdminLoginModal = ({ isOpen, onClose }) => {
             </form>
 
             <div className="mt-4 text-center">
-              <button
-                onClick={() => {
-                  onClose();
-                  navigate("/admin-register");
-                }}
-                className="text-blue-600 hover:text-blue-500 text-sm font-medium"
-              >
-                Need to create an administrator account? Register here
-              </button>
             </div>
           </motion.div>
         </motion.div>

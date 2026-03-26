@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
   Home,
@@ -62,6 +62,29 @@ const getListingAmenities = (listing) =>
 const getRelationObject = (value) =>
   Array.isArray(value) ? (value[0] ?? null) : value;
 
+const getAgreementPaymentAmount = (terms) => {
+  if (!terms) return 0;
+
+  let parsedTerms = terms;
+
+  if (typeof terms === "string") {
+    try {
+      parsedTerms = JSON.parse(terms);
+    } catch {
+      return 0;
+    }
+  }
+
+  const amount = Number(parsedTerms?.payment_amount);
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+};
+
+const pesoFormatter = new Intl.NumberFormat("en-PH", {
+  style: "currency",
+  currency: "PHP",
+  maximumFractionDigits: 0,
+});
+
 const DashboardPage = () => {
   const { user } = useAuth();
   const [stats, setStats] = useState({
@@ -77,8 +100,8 @@ const DashboardPage = () => {
     verified: false,
   });
   const [myListings, setMyListings] = useState([]);
-  const [renterBrowseListings, setRenterBrowseListings] = useState([]);
-  const [renterBrowseLoading, setRenterBrowseLoading] = useState(false);
+  const [browseListings, setBrowseListings] = useState([]);
+  const [browseLoading, setBrowseLoading] = useState(false);
   const [recentApplications, setRecentApplications] = useState([]);
   const [renterAgreements, setRenterAgreements] = useState([]);
   const [ownerAgreements, setOwnerAgreements] = useState([]);
@@ -88,13 +111,61 @@ const DashboardPage = () => {
   const [websiteComment, setWebsiteComment] = useState("");
   const [submittingWebsiteReview, setSubmittingWebsiteReview] = useState(false);
 
+  const ownerListingPerformance = useMemo(() => {
+    if (user?.role !== "owner") return [];
+
+    const metricsByListingId = new Map();
+
+    myListings.forEach((listing) => {
+      metricsByListingId.set(String(listing.id), {
+        listingId: listing.id,
+        title: listing.title || "Untitled Listing",
+        totalIncome: 0,
+        renterIds: new Set(),
+      });
+    });
+
+    ownerAgreements.forEach((agreement) => {
+      const listingId = String(
+        agreement?.listing?.id || agreement?.listing_id || "",
+      );
+
+      if (!listingId) return;
+
+      if (!metricsByListingId.has(listingId)) {
+        metricsByListingId.set(listingId, {
+          listingId,
+          title: agreement?.listing?.title || "Untitled Listing",
+          totalIncome: 0,
+          renterIds: new Set(),
+        });
+      }
+
+      const metric = metricsByListingId.get(listingId);
+      metric.totalIncome += getAgreementPaymentAmount(agreement?.terms);
+
+      const status = String(agreement?.status || "").toLowerCase();
+      const renterId = agreement?.renter?.id || agreement?.renter_id;
+      if (["confirmed", "active"].includes(status) && renterId) {
+        metric.renterIds.add(renterId);
+      }
+    });
+
+    return Array.from(metricsByListingId.values()).map((metric) => ({
+      listingId: metric.listingId,
+      title: metric.title,
+      totalIncome: metric.totalIncome,
+      renterCount: metric.renterIds.size,
+    }));
+  }, [myListings, ownerAgreements, user?.role]);
+
   useEffect(() => {
     // Clear previous state and refetch dashboard data whenever the
     // authenticated user changes (login/logout/account switch). This
     // ensures each account sees only their own listings/applications.
     if (!user) {
       setMyListings([]);
-      setRenterBrowseListings([]);
+      setBrowseListings([]);
       setRecentApplications([]);
       setRenterAgreements([]);
       setOwnerAgreements([]);
@@ -137,8 +208,10 @@ const DashboardPage = () => {
         const listings = await listingService.getAll({ ownerId: user.id });
         setMyListings(listings);
         setStats((prev) => ({ ...prev, listings: listings.length }));
-      } else if (user.role === "renter") {
-        await fetchRenterBrowseListings();
+      }
+
+      if (["renter", "owner"].includes(user.role)) {
+        await fetchBrowseListings();
       }
 
       // Applications fetched are scoped to the authenticated user on the server
@@ -228,13 +301,14 @@ const DashboardPage = () => {
 
   const handleBrowseFilterSubmit = (e) => {
     e.preventDefault();
-    fetchRenterBrowseListings();
+
+    fetchBrowseListings();
   };
 
-  const fetchRenterBrowseListings = async (activeFilters = browseFilters) => {
-    if (!user || user.role !== "renter") return;
+  const fetchBrowseListings = async (activeFilters = browseFilters) => {
+    if (!user || !["renter", "owner"].includes(user.role)) return;
 
-    setRenterBrowseLoading(true);
+    setBrowseLoading(true);
     try {
       const requestFilters = {
         ...activeFilters,
@@ -266,12 +340,12 @@ const DashboardPage = () => {
 
       data = data.filter((listing) => Number(listing?.capacity) > 0);
 
-      setRenterBrowseListings(data);
+      setBrowseListings(data);
     } catch (error) {
-      console.error("Failed to fetch dashboard renter listings:", error);
-      setRenterBrowseListings([]);
+      console.error("Failed to fetch dashboard browse listings:", error);
+      setBrowseListings([]);
     } finally {
-      setRenterBrowseLoading(false);
+      setBrowseLoading(false);
     }
   };
 
@@ -302,94 +376,131 @@ const DashboardPage = () => {
 
           {/* Browse Listings + Totals */}
           <div className="card p-6 mb-8">
+            {user.role === "owner" && (
+              <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4">
+                <h3 className="text-lg font-bold text-grey-700">
+                  Boarding House Income and Renters
+                </h3>
+                <p className="text-sm text-green-700 mt-1">
+                  Total income and active renters for each
+                  boarding house.
+                </p>
+
+                {ownerListingPerformance.length > 0 ? (
+                  <div className="mt-4 space-y-2">
+                    {ownerListingPerformance.map((item) => (
+                      <div
+                        key={item.listingId}
+                        className="rounded-md border border-amber-200 bg-white px-3 py-2"
+                      >
+                        <p className="font-semibold text-gray-900">
+                          {item.title}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-700">
+                          <p>
+                            Total Income:{" "}
+                            <span className="font-semibold text-green-700">
+                              {pesoFormatter.format(item.totalIncome)}
+                            </span>
+                          </p>
+                          <p>
+                            Active Renters:{" "}
+                            <span className="font-semibold text-blue-700">
+                              {item.renterCount}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-gray-700">
+                    You have no posted boarding houses yet.
+                  </p>
+                )}
+              </div>
+            )}
+
             <h2 className="text-xl font-bold text-gray-900 mb-4">
               Search Boarding Houses
             </h2>
 
-            {user?.role === "renter" ? (
-              <form onSubmit={handleBrowseFilterSubmit} className="mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="md:col-span-2">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                      <input
-                        type="text"
-                        name="search"
-                        value={browseFilters.search}
-                        onChange={handleBrowseFilterChange}
-                        placeholder="Search by owner/title/description..."
-                        className="input-field pl-10"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                      <input
-                        type="text"
-                        name="location"
-                        value={browseFilters.location}
-                        onChange={handleBrowseFilterChange}
-                        placeholder="Location"
-                        className="input-field pl-10"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex space-x-2">
+            <form onSubmit={handleBrowseFilterSubmit} className="mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="md:col-span-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <input
-                      type="number"
-                      name="minPrice"
-                      min="0"
-                      value={browseFilters.minPrice}
+                      type="text"
+                      name="search"
+                      value={browseFilters.search}
                       onChange={handleBrowseFilterChange}
-                      placeholder="Min Price"
-                      className="input-field"
-                    />
-                    <input
-                      type="number"
-                      name="maxPrice"
-                      min="0"
-                      value={browseFilters.maxPrice}
-                      onChange={handleBrowseFilterChange}
-                      placeholder="Max Price"
-                      className="input-field"
+                      placeholder="Search by owner/title/description..."
+                      className="input-field pl-10"
                     />
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between mt-4">
-                  <div className="flex items-center">
+                <div>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                     <input
-                      type="checkbox"
-                      name="verified"
-                      id="dashboard-verified"
-                      checked={browseFilters.verified}
+                      type="text"
+                      name="location"
+                      value={browseFilters.location}
                       onChange={handleBrowseFilterChange}
-                      className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      placeholder="Location"
+                      className="input-field pl-10"
                     />
-                    <label
-                      htmlFor="dashboard-verified"
-                      className="ml-2 text-sm text-gray-700"
-                    >
-                      Verified listings only
-                    </label>
                   </div>
-
-                  <button type="submit" className="btn-primary">
-                    <Filter className="inline h-5 w-5 mr-2" />
-                    Apply Filters
-                  </button>
                 </div>
-              </form>
-            ) : (
-              <div className="mb-6">
-                <Link to="/listings" className="btn-outline">
-                  Find Here ...
-                </Link>
+
+                <div className="flex space-x-2">
+                  <input
+                    type="number"
+                    name="minPrice"
+                    min="0"
+                    value={browseFilters.minPrice}
+                    onChange={handleBrowseFilterChange}
+                    placeholder="Min Price"
+                    className="input-field"
+                  />
+                  <input
+                    type="number"
+                    name="maxPrice"
+                    min="0"
+                    value={browseFilters.maxPrice}
+                    onChange={handleBrowseFilterChange}
+                    placeholder="Max Price"
+                    className="input-field"
+                  />
+                </div>
               </div>
-            )}
+
+              <div className="flex items-center justify-between mt-4">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    name="verified"
+                    id="dashboard-verified"
+                    checked={browseFilters.verified}
+                    onChange={handleBrowseFilterChange}
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  />
+                  <label
+                    htmlFor="dashboard-verified"
+                    className="ml-2 text-sm text-gray-700"
+                  >
+                    Verified listings only
+                  </label>
+                </div>
+
+                <button type="submit" className="btn-primary">
+                  <Filter className="inline h-5 w-5 mr-2" />
+                  Apply Filters
+                </button>
+              </div>
+            </form>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
@@ -411,15 +522,15 @@ const DashboardPage = () => {
               </div>
             </div>
 
-            {user?.role === "renter" && (
+            {["renter", "owner"].includes(user?.role) && (
               <div className="mt-6">
-                {renterBrowseLoading ? (
+                {browseLoading ? (
                   <div className="flex items-center justify-center py-12">
                     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
                   </div>
-                ) : renterBrowseListings.length > 0 ? (
+                ) : browseListings.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {renterBrowseListings.map((listing) => (
+                    {browseListings.map((listing) => (
                       <ListingCard key={listing.id} listing={listing} />
                     ))}
                   </div>

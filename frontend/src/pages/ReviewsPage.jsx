@@ -123,7 +123,7 @@ export default function ReviewsPage() {
             <div className="space-y-4 mb-8">
               {/* Review Counts Row */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="bg-green-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">
                     Boarding House Reviews
                   </p>
@@ -131,15 +131,15 @@ export default function ReviewsPage() {
                     {reviews.length}
                   </p>
                 </div>
-                <div className="bg-yellow-50 p-4 rounded-lg">
+                <div className="bg-green-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">Owner Reviews</p>
                   <p className="text-3xl font-bold text-yellow-600">
                     {ownerReviews.length}
                   </p>
                 </div>
-                <div className="bg-teal-50 p-4 rounded-lg">
+                <div className="bg-green-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">System Reviews</p>
-                  <p className="text-3xl font-bold text-teal-600">
+                  <p className="text-3xl font-bold text-orange-600">
                     {websiteSummary.total_reviews}
                   </p>
                 </div>
@@ -155,13 +155,13 @@ export default function ReviewsPage() {
                     {averageRating}/5
                   </p>
                 </div>
-                <div className="bg-indigo-50 p-4 rounded-lg">
+                <div className="bg-green-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">Owner Avg Rating</p>
-                  <p className="text-3xl font-bold text-indigo-600">
+                  <p className="text-3xl font-bold text-yellow-600">
                     {ownerAverageRating}/5
                   </p>
                 </div>
-                <div className="bg-orange-50 p-4 rounded-lg">
+                <div className="bg-green-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">System Avg Rating</p>
                   <p className="text-3xl font-bold text-orange-600">
                     {websiteSummary.average_rating}/5

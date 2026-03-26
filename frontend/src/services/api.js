@@ -324,34 +324,6 @@ export const applicationService = {
   },
 };
 
-// Message Services
-export const messageService = {
-  getConversations: async () => {
-    const response = await api.get("/messages/conversations");
-    return response.data;
-  },
-
-  getMessages: async (conversationId) => {
-    const response = await api.get(`/messages/${conversationId}`);
-    return response.data;
-  },
-
-  send: async (messageData) => {
-    const response = await api.post("/messages", messageData);
-    return response.data;
-  },
-
-  markAsRead: async (messageId) => {
-    const response = await api.patch(`/messages/${messageId}/read`);
-    return response.data;
-  },
-
-  getOnlineUsers: async () => {
-    const response = await api.get("/messages/online-users");
-    return response.data;
-  },
-};
-
 // Admin Services
 export const adminService = {
   getUsers: async () => {

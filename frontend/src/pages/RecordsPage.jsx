@@ -274,7 +274,7 @@ export default function RecordsPage() {
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900">Records</h1>
             <p className="text-gray-600 mt-2">
-              Monthly income records based on owner payment saves
+              Monthly income records based on recorded payments.
             </p>
           </div>
 

@@ -66,22 +66,24 @@ const HomePage = () => {
     {
       name: "Philip Salvador Jr.",
       role: "Full-Stack Developer",
-      image: "https://scontent.fceb3-1.fna.fbcdn.net/v/t39.30808-1/559032842_2204099540086813_3137192340666141654_n.jpg?stp=dst-jpg_s200x200_tt6&_nc_cat=103&ccb=1-7&_nc_sid=1d2534&_nc_eui2=AeGE0ZCo8mLCXlfsFovD69dQRMy41p6UKNtEzLjWnpQo28Zlw-hJ0MgrcVu7ppJZ3YToV9_z2Q3We4GxH1vys65S&_nc_ohc=rVLxQ2ck16oQ7kNvwGf6ADB&_nc_oc=AdnwFDV5MdP8fcfHiVELN6WdrFgHd0CxgHx5o60NAEWvB0Xmr6OTCc11D9abSEJ2Zhg&_nc_zt=24&_nc_ht=scontent.fceb3-1.fna&_nc_gid=9i50MHE9_yta6BRu4q_Reg&_nc_ss=8&oh=00_AfxrqL0uuxUtaruQcU6_ICeCB6UGldBPgOHkQ4J8ISEv5w&oe=69B764A7",
+      image: "https://scontent.fceb3-1.fna.fbcdn.net/v/t39.30808-6/484994376_2029467617550007_8470387261261155432_n.jpg?_nc_cat=106&ccb=1-7&_nc_sid=53a332&_nc_eui2=AeG1_zwwuekaequrIEABcmcRYIPRVeinHk9gg9FV6KceT6EWPHLEoZF2umlMM23buhXzihVg8Jhf2oO1cA86YGEt&_nc_ohc=yU3xu1avMdMQ7kNvwFyirud&_nc_oc=AdoErrAZv1T452thuAbYodY_8wAyQZyf1B_Da03VXFIEnl3fVVabes5tyXdFjkjG66o&_nc_zt=23&_nc_ht=scontent.fceb3-1.fna&_nc_gid=kQbRVQ42giZM7BYj1xUGtw&_nc_ss=7a30f&oh=00_AfzqnX8n-CBmJSysvhDw9xu3Z8fC-VGlewYIZURtFvXGmQ&oe=69C345A2",
     },
     {
       name: "Earlyn Roxas",
       role: "Backend Developer",
-      image: "https://scontent.fceb9-1.fna.fbcdn.net/v/t1.15752-9/626698435_2914888528871265_3008597147105141402_n.jpg?stp=dst-jpg_s640x640_tt6&_nc_cat=107&ccb=1-7&_nc_sid=0024fc&_nc_eui2=AeEFTGJ8i5x2aAb_Yt5kuV15KlJsZ9i5wy4qUmxn2LnDLp4Y9jno8Lq9tEdmaJkfLBbeHHcsmXcF3kUil8zfry9O&_nc_ohc=9CzLYxwf1h4Q7kNvwGVqYac&_nc_oc=AdkXMSIT3KfD7fqxcd9JPud72E1AYIEcv6KPbyibdZzkDhcDKxMOgCCF6zUROi7FFPY&_nc_zt=23&_nc_ht=scontent.fceb9-1.fna&_nc_ss=8&oh=03_Q7cD4wHazLBKxfDvyU-6Fc-uwgX7EHWVasf9DGc1BBIlr_CexA&oe=69D97490",
+      image:
+        "https://scontent.fceb9-1.fna.fbcdn.net/v/t1.15752-9/626698435_2914888528871265_3008597147105141402_n.jpg?stp=dst-jpg_s640x640_tt6&_nc_cat=107&ccb=1-7&_nc_sid=0024fc&_nc_eui2=AeEFTGJ8i5x2aAb_Yt5kuV15KlJsZ9i5wy4qUmxn2LnDLp4Y9jno8Lq9tEdmaJkfLBbeHHcsmXcF3kUil8zfry9O&_nc_ohc=9CzLYxwf1h4Q7kNvwGVqYac&_nc_oc=AdkXMSIT3KfD7fqxcd9JPud72E1AYIEcv6KPbyibdZzkDhcDKxMOgCCF6zUROi7FFPY&_nc_zt=23&_nc_ht=scontent.fceb9-1.fna&_nc_ss=8&oh=03_Q7cD4wHazLBKxfDvyU-6Fc-uwgX7EHWVasf9DGc1BBIlr_CexA&oe=69D97490",
     },
     {
       name: "Ainnz Thryzen Yane",
       role: "UI/UX Developer",
-      image: "https://scontent.fceb9-1.fna.fbcdn.net/v/t39.30808-1/463247106_994032299406892_8226190267062407442_n.jpg?stp=dst-jpg_s200x200_tt6&_nc_cat=110&ccb=1-7&_nc_sid=e99d92&_nc_eui2=AeFVZRwZM1w93hAKqQaUMttgNgD77uE2ukY2APvu4Ta6RiE4VpOUZ9jPrPNQjlKs5wIFMydW8xZY7-RbBZ4lhAvM&_nc_ohc=CoOmhG3nZUgQ7kNvwHbOlLw&_nc_oc=AdnC3gYAhSnfbyfRQR4WDlBU4oeSjfF8PF_3nSoooa6gsBOV02uM973oZ5bzZk8UAGQ&_nc_zt=24&_nc_ht=scontent.fceb9-1.fna&_nc_gid=3pq3OSsdC0Z0Q7zs1wJIgg&_nc_ss=8&oh=00_Afx-BEYS2SaFbzRX2QDS6hC8mE-gh5crHYauzfmaGK_DDw&oe=69B76F7C",
+      image: "https://lh3.googleusercontent.com/sgi-eph/AO8RNkw4b6sYlCi4vP84GRt5sJCs3OuS2kS8dKOZrs-TJT9Pu4EJCbMdX4d-u8Y9vYIHsqD9Zzrv_hmgogzWVTc9-pU9t8FhqJEEPa0gD9VJySI9niBrdyZZzrxh0pKYf2zUGnKkp6Jb6c96cABj2kPeaaEUZrndXv4Hhw=s925",
     },
     {
       name: "Mary Jane Asequia",
       role: "Frontend Developer",
-      image: "https://scontent.fceb3-1.fna.fbcdn.net/v/t1.15752-9/646404031_26029606929983383_6623342040773455225_n.jpg?_nc_cat=105&ccb=1-7&_nc_sid=9f807c&_nc_eui2=AeH5sI6ICUS3snBdb6yhCiKQ80tP_J4OAeDzS0_8ng4B4MDmwi4STxVEFxXx0imYLhLw849p5lu0cLVGuBpIG9wq&_nc_ohc=YRF4ZGJbxqkQ7kNvwF5AJez&_nc_oc=AdkM_PH12kqs7hlzuBIS_bhPnViBfUoZfcOHzRWTKAx0Y7Sn6T1eWfFYsv5eYVRgvVo&_nc_zt=23&_nc_ht=scontent.fceb3-1.fna&_nc_ss=8&oh=03_Q7cD4wH0t_WyS-H3XKQkpkCshJfIIuTvqqCtW5G_cT5H0Wkf5A&oe=69D976A2",
+      image:
+        "https://scontent.fceb3-1.fna.fbcdn.net/v/t1.15752-9/646404031_26029606929983383_6623342040773455225_n.jpg?_nc_cat=105&ccb=1-7&_nc_sid=9f807c&_nc_eui2=AeH5sI6ICUS3snBdb6yhCiKQ80tP_J4OAeDzS0_8ng4B4MDmwi4STxVEFxXx0imYLhLw849p5lu0cLVGuBpIG9wq&_nc_ohc=YRF4ZGJbxqkQ7kNvwF5AJez&_nc_oc=AdkM_PH12kqs7hlzuBIS_bhPnViBfUoZfcOHzRWTKAx0Y7Sn6T1eWfFYsv5eYVRgvVo&_nc_zt=23&_nc_ht=scontent.fceb3-1.fna&_nc_ss=8&oh=03_Q7cD4wH0t_WyS-H3XKQkpkCshJfIIuTvqqCtW5G_cT5H0Wkf5A&oe=69D976A2",
     },
   ];
 

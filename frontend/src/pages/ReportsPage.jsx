@@ -291,14 +291,14 @@ export default function ReportsPage() {
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900">Reports</h1>
             <p className="text-gray-600 mt-2">
-              Admin renter and room occupancy report summary
+              Admin report summary
             </p>
           </div>
 
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900">
-                Renter Reports
+                Renter Records
               </h2>
               <div className="mt-3 flex flex-wrap gap-3">
                 <span className="inline-flex items-center rounded-full border border-gray-300 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
@@ -381,7 +381,7 @@ export default function ReportsPage() {
           <div className="bg-white rounded-lg shadow-md p-6 mt-8">
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900">
-                Owner Reports
+                Property Owner Records
               </h2>
               <div className="mt-3 flex flex-wrap gap-3">
                 <span className="inline-flex items-center rounded-full border border-gray-300 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">

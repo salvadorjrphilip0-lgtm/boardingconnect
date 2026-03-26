@@ -33,6 +33,7 @@ const ProfilePage = () => {
   const [selectedAvatarPreviewUrl, setSelectedAvatarPreviewUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [isExportChoiceOpen, setIsExportChoiceOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -123,96 +124,256 @@ const ProfilePage = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleDownloadOverallRecordCsv = async () => {
+  const formatCsvDate = (value) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return new Intl.DateTimeFormat("en-PH", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  };
+
+  const formatMoney = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return "-";
+    return numeric.toFixed(2);
+  };
+
+  const toPaymentStatus = (value) => {
+    const normalized = String(value || "").toLowerCase();
+    if (normalized === "paid") return "Paid";
+    if (normalized === "partial") return "Partial";
+    return "Unpaid";
+  };
+
+  const averageRating = (items, key = "rating") => {
+    if (!Array.isArray(items) || items.length === 0) return "-";
+    const ratings = items
+      .map((item) => Number(item?.[key]))
+      .filter(
+        (rating) => Number.isFinite(rating) && rating >= 1 && rating <= 5,
+      );
+
+    if (ratings.length === 0) return "-";
+    const total = ratings.reduce((sum, value) => sum + value, 0);
+    return (total / ratings.length).toFixed(1);
+  };
+
+  const fetchExportData = async () => {
+    const [
+      users,
+      agreements,
+      listings,
+      reviewData,
+      websiteReviewData,
+      incomeData,
+      ownerReviewData,
+    ] = await Promise.all([
+      adminService.getUsers(),
+      agreementService.getAll(),
+      listingService.getAll(),
+      reviewService.getAll(1, 5000),
+      websiteReviewService.getAdminSummary(),
+      reportService.getMonthlyIncomeRecords(1, 5000),
+      ownerReviewService.getAll(1, 5000),
+    ]);
+
+    return {
+      users: users || [],
+      agreements: agreements || [],
+      listings: listings || [],
+      reviews: reviewData?.reviews || [],
+      websiteReviews: websiteReviewData?.reviews || [],
+      incomeRecords: incomeData?.records || [],
+      ownerReviews: ownerReviewData?.reviews || [],
+    };
+  };
+
+  const handleDownloadRentersRecordCsv = async () => {
     if (!user || user.role !== "admin") {
-      toast.error("Only admin can download overall records");
+      toast.error("Only admin can download records");
       return;
     }
 
     setExporting(true);
     try {
-      const [
-        users,
-        agreements,
-        listings,
-        reviewData,
-        websiteReviewData,
-        concernsData,
-        incomeData,
-      ] = await Promise.all([
-        adminService.getUsers(),
-        agreementService.getAll(),
-        listingService.getAll(),
-        reviewService.getAll(1, 5000),
-        websiteReviewService.getAdminSummary(),
-        concernService.getAll(1, 5000),
-        reportService.getMonthlyIncomeRecords(1, 5000),
-      ]);
+      const { users, agreements, websiteReviews, incomeRecords } =
+        await fetchExportData();
 
-      const ownerIds = (users || [])
-        .filter((item) => item?.role === "owner" && item?.id)
-        .map((item) => item.id);
+      const today = new Date();
+      const exportDate = formatCsvDate(today);
 
-      const ownerReviewBatches = await Promise.all(
-        ownerIds.map((ownerId) =>
-          ownerReviewService.getByOwner(ownerId).catch(() => ({ reviews: [] })),
-        ),
-      );
-
-      const ownerReviews = ownerReviewBatches.flatMap(
-        (batch) => batch?.reviews || [],
-      );
-      const reviews = reviewData?.reviews || [];
-      const websiteReviews = websiteReviewData?.reviews || [];
-      const concerns = concernsData?.concerns || [];
-      const incomeRecords = incomeData?.records || [];
-
-      const postedBhCountByOwner = (listings || []).reduce((acc, listing) => {
-        const ownerId =
-          listing?.ownerId || listing?.owner?.id || listing?.owner_id;
-        if (!ownerId) return acc;
-        acc[ownerId] = (acc[ownerId] || 0) + 1;
-        return acc;
-      }, {});
-
-      const renterEarliestMoveIn = (agreements || []).reduce(
+      const latestAgreementByRenter = (agreements || []).reduce(
         (acc, agreement) => {
           const renterId = agreement?.renter_id || agreement?.renter?.id;
-          const status = String(agreement?.status || "").toLowerCase();
-          const moveInDate = agreement?.renter_confirmed_at;
+          if (!renterId) return acc;
 
-          if (!renterId || !moveInDate) return acc;
-          if (!["confirmed", "active"].includes(status)) return acc;
+          const agreementTime = new Date(
+            agreement?.updated_at || agreement?.created_at || 0,
+          ).getTime();
+          if (Number.isNaN(agreementTime)) return acc;
 
           const current = acc[renterId];
-          const moveInTime = new Date(moveInDate).getTime();
-          if (Number.isNaN(moveInTime)) return acc;
+          const currentTime = new Date(
+            current?.updated_at || current?.created_at || 0,
+          ).getTime();
 
-          if (!current || moveInTime < new Date(current).getTime()) {
-            acc[renterId] = moveInDate;
+          if (!current || agreementTime > currentTime) {
+            acc[renterId] = agreement;
           }
+
           return acc;
         },
         {},
       );
 
-      const reviewsByRenter = reviews.reduce((acc, review) => {
-        const renterId = review?.renter_id;
+      const agreementCountByRenter = (agreements || []).reduce((acc, item) => {
+        const renterId = item?.renter_id || item?.renter?.id;
         if (!renterId) return acc;
-        if (!acc[renterId]) acc[renterId] = [];
-        acc[renterId].push(review);
+        acc[renterId] = (acc[renterId] || 0) + 1;
         return acc;
       }, {});
 
-      const reviewsByOwner = reviews.reduce((acc, review) => {
-        const ownerId = review?.listings?.owner?.id;
+      const systemReviewByUserId = (websiteReviews || []).reduce(
+        (acc, review) => {
+          if (!review?.id) return acc;
+          acc[review.id] = Number(review.rating) || "-";
+          return acc;
+        },
+        {},
+      );
+
+      const sortedIncomeRecords = [...(incomeRecords || [])].sort((a, b) => {
+        const aDate = new Date(a?.recorded_at || 0).getTime();
+        const bDate = new Date(b?.recorded_at || 0).getTime();
+        return bDate - aDate;
+      });
+
+      const latestIncomeByRenter = {};
+
+      sortedIncomeRecords.forEach((record) => {
+        if (record?.renter_id && !latestIncomeByRenter[record.renter_id]) {
+          latestIncomeByRenter[record.renter_id] = {
+            monthlyPayment: formatMoney(record?.total_payment),
+          };
+        }
+      });
+
+      const csvHeaders = [
+        "Name",
+        "Phone Numbers",
+        "Email",
+        "ID Type",
+        "ID Number",
+        "Rent Status",
+        "Account Status",
+        "Monthly Payment",
+        "Start Rent Date",
+        "Due Date",
+        "System Rating",
+        "Account Created",
+        "Date",
+      ];
+
+      const csvRows = (users || [])
+        .filter((item) => String(item?.role || "").toLowerCase() === "renter")
+        .map((item) => {
+          const userId = item.id;
+          const latestAgreement = latestAgreementByRenter[userId] || null;
+          const hasApplied = Number(agreementCountByRenter[userId] || 0) > 0;
+
+          return {
+            Name: item.full_name || item.fullName || "Unknown",
+            "Phone Numbers": item.phone || "-",
+            Email: item.email || "-",
+            "ID Type": String(item.id_type || "-").replaceAll("_", " "),
+            "ID Number": item.id_number || "-",
+            "Rent Status": hasApplied ? "Applied" : "Not Applied",
+            "Account Status": item.verified ? "Verified" : "Pending",
+            "Monthly Payment":
+              latestIncomeByRenter[userId]?.monthlyPayment || "-",
+            "Start Rent Date": formatCsvDate(
+              latestAgreement?.renter_confirmed_at,
+            ),
+            "Due Date": formatCsvDate(latestAgreement?.due_date),
+            "System Rating": Number.isFinite(
+              Number(systemReviewByUserId[userId]),
+            )
+              ? Number(systemReviewByUserId[userId]).toFixed(1)
+              : "-",
+            "Account Created": formatCsvDate(item.created_at),
+            Date: exportDate,
+          };
+        })
+        .sort((a, b) => String(a.Name).localeCompare(String(b.Name)));
+
+      const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+      downloadCsv(csvHeaders, csvRows, `renters-records-${stamp}.csv`);
+      toast.success("Renters record CSV downloaded");
+    } catch (error) {
+      console.error("Failed to generate renters record CSV:", error);
+      toast.error("Failed to download renters record CSV");
+    } finally {
+      setExporting(false);
+      setIsExportChoiceOpen(false);
+    }
+  };
+
+  const handleDownloadOwnersRecordCsv = async () => {
+    if (!user || user.role !== "admin") {
+      toast.error("Only admin can download records");
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const {
+        users,
+        agreements,
+        listings,
+        reviews,
+        incomeRecords,
+        ownerReviews,
+      } = await fetchExportData();
+
+      const today = new Date();
+      const exportDate = formatCsvDate(today);
+
+      const owners = (users || []).filter(
+        (item) => String(item?.role || "").toLowerCase() === "owner",
+      );
+
+      const listingByOwner = (listings || []).reduce((acc, listing) => {
+        const ownerId =
+          listing?.ownerId || listing?.owner?.id || listing?.owner_id || null;
         if (!ownerId) return acc;
         if (!acc[ownerId]) acc[ownerId] = [];
-        acc[ownerId].push(review);
+        acc[ownerId].push(listing);
         return acc;
       }, {});
 
-      const ownerRatesReceivedByOwner = ownerReviews.reduce((acc, review) => {
+      const occupiedByListing = (agreements || []).reduce((acc, agreement) => {
+        const status = String(agreement?.status || "").toLowerCase();
+        if (!["confirmed", "active"].includes(status)) return acc;
+
+        const listingId = agreement?.listing_id || agreement?.listing?.id;
+        if (!listingId) return acc;
+        acc[listingId] = (acc[listingId] || 0) + 1;
+        return acc;
+      }, {});
+
+      const reviewsByListing = (reviews || []).reduce((acc, review) => {
+        const listingId = review?.listing_id || review?.listing?.id;
+        if (!listingId) return acc;
+        if (!acc[listingId]) acc[listingId] = [];
+        acc[listingId].push(review);
+        return acc;
+      }, {});
+
+      const ownerProfileRatings = (ownerReviews || []).reduce((acc, review) => {
         const ownerId = review?.owner_id;
         if (!ownerId) return acc;
         if (!acc[ownerId]) acc[ownerId] = [];
@@ -220,152 +381,95 @@ const ProfilePage = () => {
         return acc;
       }, {});
 
-      const ownerRatesGivenByRenter = ownerReviews.reduce((acc, review) => {
-        const renterId = review?.renter_id;
-        if (!renterId) return acc;
-        if (!acc[renterId]) acc[renterId] = [];
-        acc[renterId].push(review);
-        return acc;
-      }, {});
-
-      const systemReviewByUserId = websiteReviews.reduce((acc, review) => {
-        if (!review?.id) return acc;
-        acc[review.id] = Number(review.rating) || "-";
-        return acc;
-      }, {});
-
-      const concernCountsByRenter = concerns.reduce((acc, concern) => {
-        const renterId = concern?.renter_id || concern?.users?.id;
-        if (!renterId) return acc;
-
-        if (!acc[renterId]) {
-          acc[renterId] = { resolved: 0, pending: 0, review: 0 };
-        }
-
-        const status = String(concern?.status || "").toLowerCase();
-        if (status === "resolved") acc[renterId].resolved += 1;
-        else if (status === "pending") acc[renterId].pending += 1;
-        else if (status === "reviewed") acc[renterId].review += 1;
-
-        return acc;
-      }, {});
-
-      const sortedIncomeRecords = [...incomeRecords].sort((a, b) => {
+      const sortedIncomeRecords = [...(incomeRecords || [])].sort((a, b) => {
         const aDate = new Date(a?.recorded_at || 0).getTime();
         const bDate = new Date(b?.recorded_at || 0).getTime();
         return bDate - aDate;
       });
 
-      const latestIncomeByRenter = {};
       const latestIncomeByOwner = {};
-
       sortedIncomeRecords.forEach((record) => {
-        const normalizedPaymentType = ["partial", "paid"].includes(
-          String(record?.payment_type || "").toLowerCase(),
-        )
-          ? String(record.payment_type).toLowerCase()
-          : "-";
-
-        if (record?.renter_id && !latestIncomeByRenter[record.renter_id]) {
-          latestIncomeByRenter[record.renter_id] = {
-            paymentType: normalizedPaymentType,
-            monthlyPayment: Number.isFinite(Number(record?.total_payment))
-              ? Number(record.total_payment).toFixed(2)
-              : "-",
-          };
-        }
-
         if (record?.owner_id && !latestIncomeByOwner[record.owner_id]) {
-          latestIncomeByOwner[record.owner_id] = {
-            paymentType: normalizedPaymentType,
-            monthlyPayment: Number.isFinite(Number(record?.total_payment))
-              ? Number(record.total_payment).toFixed(2)
-              : "-",
-          };
+          latestIncomeByOwner[record.owner_id] = toPaymentStatus(
+            record?.payment_type,
+          );
         }
+      });
+
+      const rows = owners.flatMap((owner) => {
+        const ownerId = owner.id;
+        const ownerListings = listingByOwner[ownerId] || [];
+        const profileRating = averageRating(ownerProfileRatings[ownerId]);
+        const paymentStatus = latestIncomeByOwner[ownerId] || "Unpaid";
+
+        if (ownerListings.length === 0) {
+          return [
+            {
+              Name: owner.full_name || owner.fullName || "Unknown",
+              "Phone Numbers": owner.phone || "-",
+              Email: owner.email || "-",
+              "ID Type": String(owner.id_type || "-").replaceAll("_", " "),
+              "ID Number": owner.id_number || "-",
+              "Title Boarding House": "-",
+              "Price of Boarding House": "-",
+              "Occupied Slot": 0,
+              "Boarding House Rating": "-",
+              "Profile Rating": profileRating,
+              "Payment Status": paymentStatus,
+              "Account Created": formatCsvDate(owner.created_at),
+              Date: exportDate,
+            },
+          ];
+        }
+
+        return ownerListings.map((listing) => ({
+          Name: owner.full_name || owner.fullName || "Unknown",
+          "Phone Numbers": owner.phone || "-",
+          Email: owner.email || "-",
+          "ID Type": String(owner.id_type || "-").replaceAll("_", " "),
+          "ID Number": owner.id_number || "-",
+          "Title Boarding House": listing?.title || "Untitled Listing",
+          "Price of Boarding House": formatMoney(listing?.price),
+          "Occupied Slot": Number(occupiedByListing[listing?.id] || 0),
+          "Boarding House Rating": averageRating(reviewsByListing[listing?.id]),
+          "Profile Rating": profileRating,
+          "Payment Status": paymentStatus,
+          "Account Created": formatCsvDate(owner.created_at),
+          Date:
+            formatCsvDate(listing?.created_at || listing?.createdAt) ||
+            exportDate,
+        }));
       });
 
       const csvHeaders = [
         "Name",
-        "Role",
-        "Phone number",
+        "Phone Numbers",
         "Email",
-        "month stayed",
-        "posted BH",
-        "boarding house review(1-5)",
-        "system review(1-5)",
-        "owner rate (1-5)",
-        "type of payment (partial/paid)",
-        "monthly payment",
-        "concern(resolved/pending/review)",
+        "ID Type",
+        "ID Number",
+        "Title Boarding House",
+        "Price of Boarding House",
+        "Occupied Slot",
+        "Boarding House Rating",
+        "Profile Rating",
+        "Payment Status",
+        "Account Created",
+        "Date",
       ];
 
-      const csvRows = (users || [])
-        .filter((item) =>
-          ["renter", "owner"].includes(String(item?.role || "").toLowerCase()),
-        )
-        .map((item) => {
-          const role = String(item.role || "").toLowerCase();
-          const userId = item.id;
-          const monthStayed =
-            role === "renter"
-              ? toMonthStayed(renterEarliestMoveIn[userId])
-              : "-";
-          const postedBh =
-            role === "owner" ? postedBhCountByOwner[userId] || 0 : 0;
+      const sortedRows = rows.sort((a, b) =>
+        String(a.Name).localeCompare(String(b.Name)),
+      );
 
-          const boardingHouseReview =
-            role === "renter"
-              ? computeAverage(reviewsByRenter[userId])
-              : computeAverage(reviewsByOwner[userId]);
-
-          const ownerRate =
-            role === "renter"
-              ? computeAverage(ownerRatesGivenByRenter[userId])
-              : computeAverage(ownerRatesReceivedByOwner[userId]);
-
-          const latestIncome =
-            role === "renter"
-              ? latestIncomeByRenter[userId]
-              : latestIncomeByOwner[userId];
-
-          const concernCounts = concernCountsByRenter[userId] || {
-            resolved: 0,
-            pending: 0,
-            review: 0,
-          };
-
-          return {
-            Name: item.full_name || item.fullName || "Unknown",
-            Role: role === "renter" ? "Renter" : "Owner",
-            "Phone number": item.phone || "-",
-            Email: item.email || "-",
-            "month stayed": monthStayed,
-            "posted BH": postedBh,
-            "boarding house review(1-5)": boardingHouseReview,
-            "system review(1-5)": Number.isFinite(
-              Number(systemReviewByUserId[userId]),
-            )
-              ? Number(systemReviewByUserId[userId]).toFixed(1)
-              : "-",
-            "owner rate (1-5)": ownerRate,
-            "type of payment (partial/paid)": latestIncome?.paymentType || "-",
-            "monthly payment": latestIncome?.monthlyPayment || "-",
-            "concern(resolved/pending/review)": `resolved:${concernCounts.resolved} | pending:${concernCounts.pending} | review:${concernCounts.review}`,
-          };
-        })
-        .sort((a, b) => String(a.Name).localeCompare(String(b.Name)));
-
-      const today = new Date();
       const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-
-      downloadCsv(csvHeaders, csvRows, `overall-records-${stamp}.csv`);
-      toast.success("Overall record CSV downloaded");
+      downloadCsv(csvHeaders, sortedRows, `owners-records-${stamp}.csv`);
+      toast.success("Owners record CSV downloaded");
     } catch (error) {
-      console.error("Failed to generate overall record CSV:", error);
-      toast.error("Failed to download overall record CSV");
+      console.error("Failed to generate owners record CSV:", error);
+      toast.error("Failed to download owners record CSV");
     } finally {
       setExporting(false);
+      setIsExportChoiceOpen(false);
     }
   };
 
@@ -642,7 +746,7 @@ const ProfilePage = () => {
                 {user?.role === "admin" && (
                   <button
                     type="button"
-                    onClick={handleDownloadOverallRecordCsv}
+                    onClick={() => setIsExportChoiceOpen(true)}
                     className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-60"
                     disabled={loading || exporting}
                   >
@@ -765,6 +869,50 @@ const ProfilePage = () => {
                 disabled={loading}
               >
                 {loading ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isExportChoiceOpen && user?.role === "admin" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+            <h3 className="text-xl font-bold text-gray-900 mb-3">
+              Download Overall Records
+            </h3>
+            <p className="text-sm text-gray-600 mb-5">
+              Choose which record you want to export.
+            </p>
+
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={handleDownloadRentersRecordCsv}
+                className="w-full px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-60"
+                disabled={exporting}
+              >
+                {exporting ? "Downloading..." : "Renters Record"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadOwnersRecordCsv}
+                className="w-full px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-60"
+                disabled={exporting}
+              >
+                {exporting ? "Downloading..." : "Owners Record"}
+              </button>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => !exporting && setIsExportChoiceOpen(false)}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                disabled={exporting}
+              >
+                Cancel
               </button>
             </div>
           </div>

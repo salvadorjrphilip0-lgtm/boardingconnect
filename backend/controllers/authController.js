@@ -41,6 +41,12 @@ export const register = async (req, res) => {
     const { email, password, fullName, phone, role, idType, idNumber } =
       req.body;
 
+    if (role === "admin") {
+      return res.status(403).json({
+        message: "Administrator accounts cannot be self-registered",
+      });
+    }
+
     // Check if user already exists
     // Use maybeSingle() to avoid Supabase raising an error when no row is found
     const { data: existingUser, error: existingErr } = await supabase

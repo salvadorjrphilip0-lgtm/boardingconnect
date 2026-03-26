@@ -186,8 +186,8 @@ const RegisterPage = () => {
                   className="input-field"
                   required
                 >
-                  <option value="renter">Student Renter</option>
-                  <option value="owner">Boarding House Owner</option>
+                  <option value="renter">Renter</option>
+                  <option value="owner">Property Owner</option>
                 </select>
               </div>
 

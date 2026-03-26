@@ -48,6 +48,7 @@ const ListingDetailsPage = () => {
   const [loadingReviews, setLoadingReviews] = useState(false);
   const [selectedReviewer, setSelectedReviewer] = useState(null);
   const [showOwnerProfile, setShowOwnerProfile] = useState(false);
+  const [showContactCodeModal, setShowContactCodeModal] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewComment, setReviewComment] = useState("");
@@ -163,6 +164,17 @@ const ListingDetailsPage = () => {
   };
 
   const getRenterStatus = (agreement) => getRenterStatusBadge(agreement);
+
+  const getDialablePhone = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+
+    const hasPlus = raw.startsWith("+");
+    const digitsOnly = raw.replace(/\D/g, "");
+
+    if (!digitsOnly) return "";
+    return hasPlus ? `+${digitsOnly}` : digitsOnly;
+  };
 
   const handleApproveApplication = async (applicationId) => {
     try {
@@ -280,6 +292,12 @@ const ListingDetailsPage = () => {
   }
 
   const normalizedLocation = (listing.location || "").trim();
+  const ownerPhoneRaw = listing?.owner?.phone || "";
+  const ownerPhoneDialable = getDialablePhone(ownerPhoneRaw);
+  const telUrl = ownerPhoneDialable ? `tel:${ownerPhoneDialable}` : "";
+  const contactQrUrl = telUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(telUrl)}`
+    : "";
   const mapQueryUrl = normalizedLocation
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(normalizedLocation)}`
     : "";
@@ -568,6 +586,17 @@ const ListingDetailsPage = () => {
                   >
                     Profile
                   </button>
+
+                  {user?.role === "renter" && user.id !== listing.ownerId && (
+                    <button
+                      type="button"
+                      onClick={() => setShowContactCodeModal(true)}
+                      disabled={!telUrl}
+                      className="w-full mt-3 py-2 px-4 rounded font-semibold bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50"
+                    >
+                      Contact Owner
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -971,9 +1000,9 @@ const ListingDetailsPage = () => {
                   placeholder="Write your comment..."
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
-                  <p className="mt-1 text-xs text-gray-500">
-                       You can review once you’ve applied for this listing.
-                  </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  You can review once you’ve applied for this listing.
+                </p>
                 <div className="mt-3 flex justify-end">
                   <button
                     type="button"
@@ -1005,6 +1034,60 @@ const ListingDetailsPage = () => {
               <button
                 type="button"
                 onClick={() => setShowOwnerProfile(false)}
+                className="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showContactCodeModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={() => setShowContactCodeModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
+              Scan to Call Owner
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Scan this barcode/QR code to open your phone dialer.
+            </p>
+
+            {contactQrUrl ? (
+              <div className="flex flex-col items-center">
+                <img
+                  src={contactQrUrl}
+                  alt="Call owner barcode"
+                  className="h-64 w-64 rounded-lg border border-gray-200"
+                />
+                <p className="mt-3 text-sm text-gray-700">
+                  Owner Number: {ownerPhoneRaw || "N/A"}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-red-600">
+                Owner phone number is not available.
+              </p>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              {telUrl && (
+                <a
+                  href={telUrl}
+                  className="px-4 py-2 rounded-lg border border-primary-300 text-primary-700 hover:bg-primary-50"
+                >
+                  Call Now
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowContactCodeModal(false)}
                 className="px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700"
               >
                 Close

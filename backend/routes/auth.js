@@ -32,9 +32,7 @@ const registerValidation = [
     .withMessage("Password must be at least 6 characters"),
   body("fullName").notEmpty().withMessage("Full name is required"),
   body("phone").notEmpty().withMessage("Phone number is required"),
-  // Allow 'admin' if you want admins to self-register. Be careful: self-registering admins
-  // are a security risk in production. Consider restricting this in production deployments.
-  body("role").isIn(["renter", "owner", "admin"]).withMessage("Invalid role"),
+  body("role").isIn(["renter", "owner"]).withMessage("Invalid role"),
   // optional fields for ID verification (required later for renter/owner in controller)
   // ID fields should be optional but should be skipped when empty strings are provided
   body("idType")
