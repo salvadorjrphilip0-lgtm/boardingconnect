@@ -163,7 +163,7 @@ const ForgotPasswordPage = () => {
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                         className="input-field pl-10"
-                        placeholder="+1 (555) 000-0000"
+                        placeholder="+63 0912 345 6789"
                         required
                       />
                     </div>

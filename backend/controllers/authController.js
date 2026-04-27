@@ -208,45 +208,6 @@ export const login = async (req, res) => {
   }
 };
 
-// Forgot password
-export const forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    // Check if user exists
-    const { data: user } = await supabase
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .single();
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // In production, send email with reset link
-    // For now, just return success
-    res.json({ message: "Password reset link sent to email" });
-  } catch (error) {
-    console.error("Forgot password error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-// Reset password
-export const resetPassword = async (req, res) => {
-  try {
-    const { token, newPassword } = req.body;
-
-    // Verify token and update password
-    // Implementation depends on your token strategy
-    res.json({ message: "Password reset successfully" });
-  } catch (error) {
-    console.error("Reset password error:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
 // Get current user
 export const getCurrentUser = async (req, res) => {
   try {

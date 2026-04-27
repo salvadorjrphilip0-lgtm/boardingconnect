@@ -4,8 +4,6 @@ import multer from "multer";
 import {
   register,
   login,
-  forgotPassword,
-  resetPassword,
   getCurrentUser,
   updateProfile,
   uploadAvatar,
@@ -67,8 +65,6 @@ router.post(
   upload.single("file"),
   uploadAvatarMultipart,
 );
-router.post("/forgot-password", forgotPassword);
-router.post("/reset-password", resetPassword);
 router.get("/me", authenticateToken, getCurrentUser);
 
 // New password reset flow endpoints

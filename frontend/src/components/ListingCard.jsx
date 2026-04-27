@@ -1,12 +1,14 @@
 import { Home, MapPin, Users, Wifi, Car, Droplet, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { applicationService } from "../services/api";
+import { applicationService, agreementService } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
+
+// Show correct badge for application status
 
 const ListingCard = ({ listing }) => {
   const { user } = useAuth();
-  const [hasApplied, setHasApplied] = useState(false);
+  const [applicationStatus, setApplicationStatus] = useState(null); // 'pending', 'accepted', 'rejected', 'cancelled', or null
   const totalRatings = Number(listing.totalRatings) || 0;
   const averageRatingRaw =
     Number(listing.averageRating ?? listing.average_rating) || 0;
@@ -15,23 +17,37 @@ const ListingCard = ({ listing }) => {
   const visualStars = `${"★".repeat(roundedStars)}${"☆".repeat(5 - roundedStars)}`;
 
   useEffect(() => {
-    checkIfApplied();
+    checkApplicationStatus();
   }, [listing.id, user]);
 
-  const checkIfApplied = async () => {
+  const checkApplicationStatus = async () => {
     if (!user || user.role !== "renter") {
-      setHasApplied(false);
+      setApplicationStatus(null);
       return;
     }
     try {
-      const applications = await applicationService.getByUser();
-      const alreadyApplied = applications.some(
-        (app) => app.listing_id === listing.id,
+      // Check agreements first (gives more accurate status)
+      const agreements = await agreementService.getByUser();
+      const agreement = agreements.find(
+        (a) => a.listing?.id === listing.id || a.listing_id === listing.id,
       );
-      setHasApplied(alreadyApplied);
+
+      if (agreement) {
+        setApplicationStatus(agreement.status);
+        return;
+      }
+
+      // Otherwise check applications
+      const applications = await applicationService.getByUser();
+      const app = applications.find((app) => app.listing_id === listing.id);
+      if (app) {
+        setApplicationStatus(app.status);
+      } else {
+        setApplicationStatus(null);
+      }
     } catch (error) {
-      console.error("Failed to check applications:", error);
-      setHasApplied(false);
+      console.error("Failed to check applications/agreements:", error);
+      setApplicationStatus(null);
     }
   };
 
@@ -61,39 +77,47 @@ const ListingCard = ({ listing }) => {
               <Home className="h-16 w-16 text-white opacity-50" />
             </div>
           )}
+
+          {/* Show listing status badge */}
           {listing.status === "approved" || listing.verified ? (
-            <>
-              <div className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
-                Verified
-              </div>
-              {hasApplied && (
-                <div className="absolute top-9 right-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
-                  Applied
-                </div>
-              )}
-            </>
+            <div className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
+              Verified
+            </div>
           ) : listing.status === "rejected" ? (
-            <>
-              <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
-                Rejected
-              </div>
-              {hasApplied && (
-                <div className="absolute top-9 right-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
-                  Applied
-                </div>
-              )}
-            </>
+            <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
+              Rejected
+            </div>
           ) : (
-            <>
-              <div className="absolute top-2 right-2 bg-yellow-400 text-white px-2 py-1 rounded-full text-xs font-semibold">
-                Pending
-              </div>
-              {hasApplied && (
-                <div className="absolute top-9 right-2 bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
-                  Applied
-                </div>
-              )}
-            </>
+            <div className="absolute top-2 right-2 bg-yellow-400 text-white px-2 py-1 rounded-full text-xs font-semibold">
+              Pending
+            </div>
+          )}
+
+          {/* Show application status badge for renters */}
+          {user && user.role === "renter" && applicationStatus && (
+            <div
+              className={`absolute top-9 right-2 text-white px-2 py-1 rounded-full text-xs font-semibold ${
+                applicationStatus === "cancelled"
+                  ? "bg-red-500"
+                  : applicationStatus === "accepted" ||
+                      applicationStatus === "confirmed" ||
+                      applicationStatus === "active"
+                    ? "bg-blue-500"
+                    : applicationStatus === "pending"
+                      ? "bg-yellow-500"
+                      : "bg-gray-500"
+              }`}
+            >
+              {applicationStatus === "cancelled"
+                ? "Cancelled"
+                : applicationStatus === "accepted" ||
+                    applicationStatus === "confirmed" ||
+                    applicationStatus === "active"
+                  ? "Applied"
+                  : applicationStatus === "pending"
+                    ? "Pending"
+                    : "Rejected"}
+            </div>
           )}
         </div>
 

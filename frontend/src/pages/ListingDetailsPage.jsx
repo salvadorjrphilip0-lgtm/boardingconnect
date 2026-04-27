@@ -33,6 +33,7 @@ const ListingDetailsPage = () => {
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
+  const [applicationStatus, setApplicationStatus] = useState(null); // 'pending', 'accepted', 'rejected', 'cancelled'
   const [renters, setRenters] = useState([]);
   const [loadingRenters, setLoadingRenters] = useState(false);
 
@@ -84,17 +85,27 @@ const ListingDetailsPage = () => {
   const checkIfApplied = async () => {
     if (!user || user.role !== "renter") {
       setHasApplied(false);
+      setApplicationStatus(null);
       return;
     }
     try {
       const agreements = await agreementService.getByUser();
-      const alreadyApplied = agreements.some(
+      const userAgreement = agreements.find(
         (a) => a.listing_id === id || a.listing?.id === id,
       );
-      setHasApplied(alreadyApplied);
+
+      if (userAgreement) {
+        setApplicationStatus(userAgreement.status);
+        // Only consider as "applied" if not cancelled
+        setHasApplied(userAgreement.status !== "cancelled");
+      } else {
+        setHasApplied(false);
+        setApplicationStatus(null);
+      }
     } catch (error) {
       console.error("Failed to check applications:", error);
       setHasApplied(false);
+      setApplicationStatus(null);
     }
   };
 
@@ -609,16 +620,18 @@ const ListingDetailsPage = () => {
                       onClick={handleApply}
                       disabled={
                         applying ||
-                        hasApplied ||
+                        (hasApplied && applicationStatus !== "cancelled") ||
                         listing.capacity === 0 ||
                         (listing.status &&
                           listing.status !== "approved" &&
                           !listing.verified)
                       }
                       className={`w-full py-2 px-4 rounded font-semibold transition-colors ${
-                        hasApplied
-                          ? "bg-green-100 text-green-800 cursor-not-allowed"
-                          : "btn-primary disabled:opacity-50"
+                        applicationStatus === "cancelled"
+                          ? "bg-red-100 text-red-800 hover:bg-red-200 cursor-pointer"
+                          : hasApplied
+                            ? "bg-green-100 text-green-800 cursor-not-allowed"
+                            : "btn-primary disabled:opacity-50"
                       }`}
                     >
                       {listing.capacity === 0
@@ -629,11 +642,13 @@ const ListingDetailsPage = () => {
                           ? listing.status === "rejected"
                             ? "Rejected"
                             : "Pending Approval"
-                          : hasApplied
-                            ? "✓ Already Applied"
-                            : applying
-                              ? "Applying..."
-                              : "Apply Now"}
+                          : applicationStatus === "cancelled"
+                            ? "✕ Cancelled"
+                            : hasApplied
+                              ? "✓ Already Applied"
+                              : applying
+                                ? "Applying..."
+                                : "Apply Now"}
                     </button>
                   )}
 
@@ -769,7 +784,9 @@ const ListingDetailsPage = () => {
                               className={`rounded-lg p-3 border ${
                                 renter.applicationStatus === "accepted"
                                   ? "bg-green-50 border-green-200"
-                                  : "bg-red-50 border-red-200"
+                                  : renter.applicationStatus === "cancelled"
+                                    ? "bg-gray-50 border-gray-200"
+                                    : "bg-red-50 border-red-200"
                               }`}
                             >
                               <div className="flex items-center justify-between">
@@ -785,7 +802,9 @@ const ListingDetailsPage = () => {
                                   className={`text-sm font-semibold capitalize ${
                                     renter.applicationStatus === "accepted"
                                       ? "text-green-600"
-                                      : "text-red-600"
+                                      : renter.applicationStatus === "cancelled"
+                                        ? "text-gray-600"
+                                        : "text-red-600"
                                   }`}
                                 >
                                   {renter.applicationStatus}

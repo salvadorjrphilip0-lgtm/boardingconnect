@@ -25,18 +25,35 @@ export const createApplication = async (req, res) => {
       return res.status(400).json({ message: "Listing is not approved yet" });
     }
 
-    // Check if already applied
+    // Check if already applied (allow if previous application was cancelled by renter only)
     const { data: existing } = await supabase
       .from("applications")
       .select("*")
       .eq("listing_id", listingId)
       .eq("applicant_id", req.user.id)
+      .neq("status", "cancelled")
       .single();
 
     if (existing) {
       return res
         .status(400)
         .json({ message: "You have already applied to this listing" });
+    }
+
+    // Check if previous application was cancelled by owner (if so, prevent re-application)
+    const { data: prevCancelled } = await supabase
+      .from("applications")
+      .select("*")
+      .eq("listing_id", listingId)
+      .eq("applicant_id", req.user.id)
+      .eq("status", "cancelled")
+      .neq("cancelled_by", req.user.id)
+      .single();
+
+    if (prevCancelled) {
+      return res
+        .status(400)
+        .json({ message: "You cannot re-apply to this listing as the owner has cancelled your previous application" });
     }
 
     const { data, error } = await supabase
@@ -317,23 +334,24 @@ export const cancelApplication = async (req, res) => {
       return res.status(403).json({ message: "Permission denied" });
     }
 
-    // Update application status
+    // Update application status and track who cancelled
     const { data: updated, error } = await supabase
       .from("applications")
-      .update({ status: "cancelled" })
+      .update({ status: "cancelled", cancelled_by: req.user.id })
       .eq("id", id)
       .select()
       .single();
 
     if (error) throw error;
 
-    // Also cancel any pending agreements
-    await supabase
+    // Also cancel any pending agreements and fetch them
+    const { data: cancelledAgreements, error: agreementError } = await supabase
       .from("agreements")
-      .update({ status: "cancelled", cancellation_reason: reason })
+      .update({ status: "cancelled", cancellation_reason: reason, cancelled_by: req.user.id })
       .eq("listing_id", application.listing_id)
       .eq("renter_id", req.user.id)
-      .in("status", ["pending", "pending_owner", "pending_renter"]);
+      .in("status", ["pending", "pending_owner", "pending_renter"])
+      .select();
 
     // Log activity
     await logActivity(
@@ -346,7 +364,11 @@ export const cancelApplication = async (req, res) => {
       { reason },
     );
 
-    res.json({ message: "Application cancelled", application: updated });
+    res.json({
+      message: "Application cancelled",
+      application: updated,
+      agreementsCancelled: cancelledAgreements || [],
+    });
   } catch (error) {
     console.error("Cancel application error:", error);
     res.status(500).json({ message: "Server error" });

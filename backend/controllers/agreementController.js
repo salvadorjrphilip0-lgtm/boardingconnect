@@ -114,12 +114,13 @@ export const createAgreement = async (req, res) => {
       return res.status(400).json({ message: "Listing is not approved yet" });
     }
 
-    // Prevent duplicate agreements for same listing and renter
+    // Prevent duplicate agreements for same listing and renter (unless previous one is cancelled)
     const { data: existing } = await supabase
       .from("agreements")
       .select("*")
       .eq("listing_id", listingId)
       .eq("renter_id", req.user.id)
+      .neq("status", "cancelled")
       .single();
 
     if (existing) {
@@ -228,17 +229,62 @@ export const cancelAgreement = async (req, res) => {
     const { id } = req.params;
     const { reason } = req.body;
 
+    // Get agreement details first to find related application
+    const { data: agreement, error: fetchErr } = await supabase
+      .from("agreements")
+      .select("id, listing_id, renter_id, owner_id")
+      .eq("id", id)
+      .single();
+
+    if (fetchErr || !agreement) {
+      return res.status(400).json({ message: "Agreement not found" });
+    }
+
+    // Check if user is authorized to cancel (owner or renter)
+    const isOwner = agreement.owner_id === req.user.id;
+    const isRenter = agreement.renter_id === req.user.id;
+
+    if (!isOwner && !isRenter) {
+      return res.status(403).json({ message: "Permission denied" });
+    }
+
+    // Update agreement status and track who cancelled
     const { data, error } = await supabase
       .from("agreements")
       .update({
         status: "cancelled",
         cancellation_reason: reason,
+        cancelled_by: req.user.id,
       })
       .eq("id", id)
       .select()
       .single();
 
     if (error) throw error;
+
+    // Also cancel the related application to maintain consistency
+    const { error: appError } = await supabase
+      .from("applications")
+      .update({ status: "cancelled", cancelled_by: req.user.id })
+      .eq("listing_id", agreement.listing_id)
+      .eq("applicant_id", agreement.renter_id);
+
+    if (appError) {
+      console.warn("Failed to update application status:", appError);
+      // Don't fail the entire operation, just log the warning
+    }
+
+    // Log the cancellation
+    const cancelledBy = isOwner ? "owner" : "renter";
+    await logActivity(
+      "agreement",
+      id,
+      `cancelled_by_${cancelledBy}`,
+      "pending",
+      "cancelled",
+      req.user.id,
+      { reason },
+    );
 
     res.json({
       message: "Agreement cancelled successfully",

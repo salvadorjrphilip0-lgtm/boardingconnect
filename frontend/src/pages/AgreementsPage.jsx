@@ -191,7 +191,7 @@ const AgreementsPage = () => {
     }
   };
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status, agreement) => {
     const badges = {
       pending: {
         icon: AlertCircle,
@@ -214,6 +214,31 @@ const AgreementsPage = () => {
         text: "Active",
       },
     };
+    
+    // If cancelled, check who cancelled it
+    if (status === "cancelled") {
+      const isCancelledByOwner = agreement?.cancelled_by && agreement?.cancelled_by !== user?.id;
+      const isCancelledByRenter = agreement?.cancelled_by && agreement?.cancelled_by === user?.id;
+      
+      if (isCancelledByOwner) {
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-800">
+            <XCircle className="h-4 w-4 mr-1" />
+            Cancelled by Owner
+          </span>
+        );
+      }
+      
+      if (isCancelledByRenter) {
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-orange-100 text-orange-800">
+            <XCircle className="h-4 w-4 mr-1" />
+            Cancelled by You
+          </span>
+        );
+      }
+    }
+    
     const badge = badges[status] || badges.pending;
     const Icon = badge.icon;
 
@@ -263,7 +288,7 @@ const AgreementsPage = () => {
                       ₱{agreement.listing?.price}/month
                     </p>
                   </div>
-                  {getStatusBadge(agreement.status)}
+                  {getStatusBadge(agreement.status, agreement)}
                 </div>
 
                 <div className="bg-gray-50 p-4 rounded-lg mb-4">
@@ -317,6 +342,17 @@ const AgreementsPage = () => {
                     </p>
                   </div>
                 )}
+
+                {/* Alert for cancelled by owner */}
+                {agreement.status === "cancelled" &&
+                  agreement.cancelled_by &&
+                  agreement.cancelled_by !== user?.id && (
+                    <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-sm text-red-800">
+                        <strong>Note:</strong> This agreement was cancelled by the owner. You cannot re-apply to this listing.
+                      </p>
+                    </div>
+                  )}
 
                 {/* Renter status visible for both owner and renter views */}
                 <div className="mb-4">

@@ -115,7 +115,48 @@ const ApplicationsPage = () => {
     setModalImageAlt("");
   };
 
-  const getStatusBadge = (status) => {
+  // Show correct badge for application vs agreement cancel
+  const getStatusBadge = (status, app) => {
+    // If application is cancelled, check who cancelled it
+    if (app?.status === "cancelled") {
+      const isCancelledByOwner = app?.cancelled_by && app?.cancelled_by !== user?.id;
+      const isCancelledByRenter = app?.cancelled_by && app?.cancelled_by === user?.id;
+      
+      if (isCancelledByOwner) {
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-800">
+            <XCircle className="h-4 w-4 mr-1" />
+            Cancelled by Owner
+          </span>
+        );
+      }
+      
+      if (isCancelledByRenter) {
+        return (
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-orange-100 text-orange-800">
+            <XCircle className="h-4 w-4 mr-1" />
+            Cancelled by You
+          </span>
+        );
+      }
+      
+      return (
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-800">
+          <XCircle className="h-4 w-4 mr-1" />
+          Application Cancelled
+        </span>
+      );
+    }
+    // If agreement is cancelled, check who cancelled it
+    if (app?.agreement_status === "cancelled") {
+      return (
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-red-100 text-red-800">
+          <XCircle className="h-4 w-4 mr-1" />
+          Agreement Cancelled
+        </span>
+      );
+    }
+    // Otherwise, show normal status
     const badges = {
       pending: {
         icon: Clock,
@@ -127,11 +168,6 @@ const ApplicationsPage = () => {
         color: "bg-green-100 text-green-800",
         text: "Confirmed",
       },
-      cancelled: {
-        icon: XCircle,
-        color: "bg-red-100 text-red-800",
-        text: "Cancelled",
-      },
       active: {
         icon: CheckCircle,
         color: "bg-green-100 text-green-800",
@@ -140,7 +176,6 @@ const ApplicationsPage = () => {
     };
     const badge = badges[status] || badges.pending;
     const Icon = badge.icon;
-
     return (
       <span
         className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${badge.color}`}
@@ -352,10 +387,21 @@ const ApplicationsPage = () => {
                       )}
                     </div>
 
-                    {getStatusBadge(app.status)}
+                    {getStatusBadge(app.status, app)}
                   </div>
 
-                  <div className="flex justify-between items-center">
+                  {/* Alert for application cancelled by owner */}
+                  {app.status === "cancelled" &&
+                    app.cancelled_by &&
+                    app.cancelled_by !== user?.id && (
+                      <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-sm text-red-800">
+                          <strong>Note:</strong> This application was cancelled by the owner. You cannot re-apply to this listing.
+                        </p>
+                      </div>
+                    )}
+
+                  <div className="flex justify-between items-center mt-4">
                     <div className="flex items-center text-sm text-gray-500">
                       <Calendar className="h-4 w-4 mr-1" />
                       Created:{" "}

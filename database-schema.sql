@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS applications (
   message TEXT,
   status VARCHAR(20) NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'accepted', 'rejected', 'cancelled')),
+  cancelled_by UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(listing_id, applicant_id)
@@ -79,6 +80,7 @@ CREATE TABLE IF NOT EXISTS agreements (
   end_date TIMESTAMP WITH TIME ZONE,
   terms TEXT,
   cancellation_reason TEXT,
+  cancelled_by UUID REFERENCES users(id) ON DELETE SET NULL,
   -- confirmation timestamps
   renter_confirmed_at TIMESTAMP WITH TIME ZONE,
   owner_confirmed_at TIMESTAMP WITH TIME ZONE,
