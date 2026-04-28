@@ -20,7 +20,7 @@ const AdminLoginModal = ({ isOpen, onClose }) => {
       const role = data?.user?.role;
       if (role === "admin") {
         toast.success("Admin login successful!");
-        navigate("/admin");
+        navigate("/admin", { replace: true });
         onClose();
       } else {
         toast.error(
@@ -120,8 +120,7 @@ const AdminLoginModal = ({ isOpen, onClose }) => {
               </button>
             </form>
 
-            <div className="mt-4 text-center">
-            </div>
+            <div className="mt-4 text-center"></div>
           </motion.div>
         </motion.div>
       )}

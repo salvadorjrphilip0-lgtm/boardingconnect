@@ -30,9 +30,9 @@ const LoginPage = () => {
       const role = user?.role || null;
       toast.success("Login successful!");
       if (role === "admin") {
-        navigate("/admin");
+        navigate("/admin", { replace: true });
       } else {
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
       }
     } catch (error) {
       toast.error(error.response?.data?.message || "Login failed");
