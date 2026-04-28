@@ -66,24 +66,24 @@ const HomePage = () => {
     {
       name: "Philip Salvador Jr.",
       role: "Full-Stack Developer",
-      image: "https://scontent.fceb3-1.fna.fbcdn.net/v/t39.30808-6/484994376_2029467617550007_8470387261261155432_n.jpg?_nc_cat=106&ccb=1-7&_nc_sid=53a332&_nc_eui2=AeG1_zwwuekaequrIEABcmcRYIPRVeinHk9gg9FV6KceT6EWPHLEoZF2umlMM23buhXzihVg8Jhf2oO1cA86YGEt&_nc_ohc=yU3xu1avMdMQ7kNvwFyirud&_nc_oc=AdoErrAZv1T452thuAbYodY_8wAyQZyf1B_Da03VXFIEnl3fVVabes5tyXdFjkjG66o&_nc_zt=23&_nc_ht=scontent.fceb3-1.fna&_nc_gid=kQbRVQ42giZM7BYj1xUGtw&_nc_ss=7a30f&oh=00_AfzqnX8n-CBmJSysvhDw9xu3Z8fC-VGlewYIZURtFvXGmQ&oe=69C345A2",
+      image: "https://scontent.fceb3-1.fna.fbcdn.net/v/t39.30808-6/559032842_2204099540086813_3137192340666141654_n.jpg?_nc_cat=103&ccb=1-7&_nc_sid=1d70fc&_nc_eui2=AeGE0ZCo8mLCXlfsFovD69dQRMy41p6UKNtEzLjWnpQo28Zlw-hJ0MgrcVu7ppJZ3YToV9_z2Q3We4GxH1vys65S&_nc_ohc=yQTiznjM6GEQ7kNvwE5Iejw&_nc_oc=AdpdN5LQTr-dsT-rgqiBKTbojO0rdnBoSmCU7BC4o72PZykuLYa7Ez9LuxW8Z94zjfg&_nc_zt=23&_nc_ht=scontent.fceb3-1.fna&_nc_gid=hUeFvHUN-UlukGPdDHLjFg&_nc_ss=7a2a8&oh=00_Af3aGTnUKGl9YzFjDPbdLRnNyA2DxqSwAl02ZgVq0XwpOg&oe=69F5DB65",
     },
     {
       name: "Earlyn Roxas",
       role: "Backend Developer",
       image:
-        "https://scontent.fceb9-1.fna.fbcdn.net/v/t1.15752-9/626698435_2914888528871265_3008597147105141402_n.jpg?stp=dst-jpg_s640x640_tt6&_nc_cat=107&ccb=1-7&_nc_sid=0024fc&_nc_eui2=AeEFTGJ8i5x2aAb_Yt5kuV15KlJsZ9i5wy4qUmxn2LnDLp4Y9jno8Lq9tEdmaJkfLBbeHHcsmXcF3kUil8zfry9O&_nc_ohc=9CzLYxwf1h4Q7kNvwGVqYac&_nc_oc=AdkXMSIT3KfD7fqxcd9JPud72E1AYIEcv6KPbyibdZzkDhcDKxMOgCCF6zUROi7FFPY&_nc_zt=23&_nc_ht=scontent.fceb9-1.fna&_nc_ss=8&oh=03_Q7cD4wHazLBKxfDvyU-6Fc-uwgX7EHWVasf9DGc1BBIlr_CexA&oe=69D97490",
+        "https://scontent.fceb9-1.fna.fbcdn.net/v/t39.30808-1/680003841_122284527104190117_5244835006335231736_n.jpg?stp=dst-jpg_s200x200_tt6&_nc_cat=109&ccb=1-7&_nc_sid=e99d92&_nc_eui2=AeG8S0v1zm3KQbKsGekkVT0Kc1hh8i2lWn5zWGHyLaVafudAgV6h6_DpNjNSJs7qEl0TIety7dfJ5VXzcyiorEIJ&_nc_ohc=MsjZr6zCz30Q7kNvwFfwlVF&_nc_oc=AdrGMjI11ScpQBUs69WzpstKA2EvQN0fKCav9qV2j-cnsNl9tE_XL-GDyf-IiF0a4VU&_nc_zt=24&_nc_ht=scontent.fceb9-1.fna&_nc_gid=8MHVPmXxPxMPC6BOsphN4w&_nc_ss=7a2a8&oh=00_Af0G0gQFDoLy7CvPRO1iMBPynX2HaKyrTss4YBynSLAOaQ&oe=69F60B0B",
     },
     {
       name: "Ainnz Thryzen Yane",
       role: "UI/UX Developer",
-      image: "https://lh3.googleusercontent.com/sgi-eph/AO8RNkw4b6sYlCi4vP84GRt5sJCs3OuS2kS8dKOZrs-TJT9Pu4EJCbMdX4d-u8Y9vYIHsqD9Zzrv_hmgogzWVTc9-pU9t8FhqJEEPa0gD9VJySI9niBrdyZZzrxh0pKYf2zUGnKkp6Jb6c96cABj2kPeaaEUZrndXv4Hhw=s925",
+      image: "https://scontent.fceb3-1.fna.fbcdn.net/v/t39.30808-6/670474954_1437668781709906_7678298649243312685_n.jpg?_nc_cat=100&ccb=1-7&_nc_sid=1d70fc&_nc_eui2=AeGSI3pGf_5d63x5QxMkNGfygU1QJ8mhAemBTVAnyaEB6SRNowGCETlQ_qT6vYe5O48kiLw3PmzRg1tY4YpIc3_o&_nc_ohc=hyoJ3YO6wZkQ7kNvwE28bxB&_nc_oc=Adogq6z7h2q6Jb_YOjJSh8IrgFCr0I9rAa8DwC-4u_cCymoL-LNHuPw_FAMKGeoy1kY&_nc_zt=23&_nc_ht=scontent.fceb3-1.fna&_nc_gid=CNvNjRIWJm2XLKs42Y4L7A&_nc_ss=7a2a8&oh=00_Af24hWohSCkJqYQdrRS6zYSquhrCJGr6RhRnt2z9sr4lGw&oe=69F606A3",
     },
     {
       name: "Mary Jane Asequia",
       role: "Frontend Developer",
       image:
-        "https://scontent.fceb3-1.fna.fbcdn.net/v/t1.15752-9/646404031_26029606929983383_6623342040773455225_n.jpg?_nc_cat=105&ccb=1-7&_nc_sid=9f807c&_nc_eui2=AeH5sI6ICUS3snBdb6yhCiKQ80tP_J4OAeDzS0_8ng4B4MDmwi4STxVEFxXx0imYLhLw849p5lu0cLVGuBpIG9wq&_nc_ohc=YRF4ZGJbxqkQ7kNvwF5AJez&_nc_oc=AdkM_PH12kqs7hlzuBIS_bhPnViBfUoZfcOHzRWTKAx0Y7Sn6T1eWfFYsv5eYVRgvVo&_nc_zt=23&_nc_ht=scontent.fceb3-1.fna&_nc_ss=8&oh=03_Q7cD4wH0t_WyS-H3XKQkpkCshJfIIuTvqqCtW5G_cT5H0Wkf5A&oe=69D976A2",
+        "https://scontent.fceb3-1.fna.fbcdn.net/v/t1.15752-9/646404031_26029606929983383_6623342040773455225_n.jpg?_nc_cat=105&ccb=1-7&_nc_sid=9f807c&_nc_eui2=AeH5sI6ICUS3snBdb6yhCiKQ80tP_J4OAeDzS0_8ng4B4MDmwi4STxVEFxXx0imYLhLw849p5lu0cLVGuBpIG9wq&_nc_ohc=DjW5n8mPinEQ7kNvwHwMkgy&_nc_oc=AdqVgDQG2wxBSYpPU5ejJwFMQ5sEKefWEAZVwr00GSG4LAS9kUAHAgPcs2UURWXnudg&_nc_zt=23&_nc_ht=scontent.fceb3-1.fna&_nc_ss=7b2a8&oh=03_Q7cD5AG6MaAbvwRxdhzlVWIOf8MllNjTgCQWFNZ6yKj4S0AdLg&oe=6A17A562",
     },
   ];
 
