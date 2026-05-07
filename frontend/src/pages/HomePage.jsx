@@ -66,19 +66,17 @@ const HomePage = () => {
     {
       name: "Philip Salvador Jr.",
       role: "Full-Stack Developer",
-      image: "https://scontent.fceb3-1.fna.fbcdn.net/v/t39.30808-6/559032842_2204099540086813_3137192340666141654_n.jpg?_nc_cat=103&ccb=1-7&_nc_sid=1d70fc&_nc_eui2=AeGE0ZCo8mLCXlfsFovD69dQRMy41p6UKNtEzLjWnpQo28Zlw-hJ0MgrcVu7ppJZ3YToV9_z2Q3We4GxH1vys65S&_nc_ohc=yQTiznjM6GEQ7kNvwE5Iejw&_nc_oc=AdpdN5LQTr-dsT-rgqiBKTbojO0rdnBoSmCU7BC4o72PZykuLYa7Ez9LuxW8Z94zjfg&_nc_zt=23&_nc_ht=scontent.fceb3-1.fna&_nc_gid=hUeFvHUN-UlukGPdDHLjFg&_nc_ss=7a2a8&oh=00_Af3aGTnUKGl9YzFjDPbdLRnNyA2DxqSwAl02ZgVq0XwpOg&oe=69F5DB65",
+      image: "https://scontent.fcgm1-1.fna.fbcdn.net/v/t39.30808-6/559032842_2204099540086813_3137192340666141654_n.jpg?_nc_cat=103&ccb=1-7&_nc_sid=1d70fc&_nc_eui2=AeGE0ZCo8mLCXlfsFovD69dQRMy41p6UKNtEzLjWnpQo28Zlw-hJ0MgrcVu7ppJZ3YToV9_z2Q3We4GxH1vys65S&_nc_ohc=KzbU52LATuIQ7kNvwFW9Rx7&_nc_oc=Adp43M0b5Wm4P00q09aAxLuf1BXT7g1JNsFL0nCTn98morFxoLnTFBBwFwZJkARpeCA&_nc_zt=23&_nc_ht=scontent.fcgm1-1.fna&_nc_gid=Z-rtttXRIh5eNtPUxj8mFA&_nc_ss=7a2a8&oh=00_Af7xyugfOyMtJEJZE0LmNnLm7TgaQspBDs-01X0gCwOejQ&oe=6A01F125",
     },
     {
       name: "Earlyn Roxas",
       role: "Backend Developer",
-      image:
-        "https://scontent.fceb9-1.fna.fbcdn.net/v/t39.30808-1/680003841_122284527104190117_5244835006335231736_n.jpg?stp=dst-jpg_s200x200_tt6&_nc_cat=109&ccb=1-7&_nc_sid=e99d92&_nc_eui2=AeG8S0v1zm3KQbKsGekkVT0Kc1hh8i2lWn5zWGHyLaVafudAgV6h6_DpNjNSJs7qEl0TIety7dfJ5VXzcyiorEIJ&_nc_ohc=MsjZr6zCz30Q7kNvwFfwlVF&_nc_oc=AdrGMjI11ScpQBUs69WzpstKA2EvQN0fKCav9qV2j-cnsNl9tE_XL-GDyf-IiF0a4VU&_nc_zt=24&_nc_ht=scontent.fceb9-1.fna&_nc_gid=8MHVPmXxPxMPC6BOsphN4w&_nc_ss=7a2a8&oh=00_Af0G0gQFDoLy7CvPRO1iMBPynX2HaKyrTss4YBynSLAOaQ&oe=69F60B0B",
+      image:"https://scontent.fcgm1-1.fna.fbcdn.net/v/t39.30808-1/680003841_122284527104190117_5244835006335231736_n.jpg?stp=dst-jpg_s200x200_tt6&_nc_cat=109&ccb=1-7&_nc_sid=e99d92&_nc_eui2=AeG8S0v1zm3KQbKsGekkVT0Kc1hh8i2lWn5zWGHyLaVafudAgV6h6_DpNjNSJs7qEl0TIety7dfJ5VXzcyiorEIJ&_nc_ohc=aYHLz-NBdNwQ7kNvwESmLqO&_nc_oc=Adrum_ZfBZ06ySO56aLNDLt9l_TjL_80u29SiC4VN4b5lWHHtwOwO2Y7ZrzXTXSKtRc&_nc_zt=24&_nc_ht=scontent.fcgm1-1.fna&_nc_gid=qqefjHmvi7HtNeDdOwCOMQ&_nc_ss=7a2a8&oh=00_Af6TZBWIINcJSh2hR2Qd21uE04gh0Pcu8ny1TGbfl8Gxkw&oe=6A01E88B",
     },
     {
       name: "Ainnz Thryzen Yane",
       role: "UI/UX Developer",
-      image: "https://scontent.fceb3-1.fna.fbcdn.net/v/t39.30808-6/670474954_1437668781709906_7678298649243312685_n.jpg?_nc_cat=100&ccb=1-7&_nc_sid=1d70fc&_nc_eui2=AeGSI3pGf_5d63x5QxMkNGfygU1QJ8mhAemBTVAnyaEB6SRNowGCETlQ_qT6vYe5O48kiLw3PmzRg1tY4YpIc3_o&_nc_ohc=hyoJ3YO6wZkQ7kNvwE28bxB&_nc_oc=Adogq6z7h2q6Jb_YOjJSh8IrgFCr0I9rAa8DwC-4u_cCymoL-LNHuPw_FAMKGeoy1kY&_nc_zt=23&_nc_ht=scontent.fceb3-1.fna&_nc_gid=CNvNjRIWJm2XLKs42Y4L7A&_nc_ss=7a2a8&oh=00_Af24hWohSCkJqYQdrRS6zYSquhrCJGr6RhRnt2z9sr4lGw&oe=69F606A3",
-    },
+      image: "",
     {
       name: "Mary Jane Asequia",
       role: "Frontend Developer",
