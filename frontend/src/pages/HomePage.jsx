@@ -77,6 +77,7 @@ const HomePage = () => {
       name: "Ainnz Thryzen Yane",
       role: "UI/UX Developer",
       image: "",
+    },
     {
       name: "Mary Jane Asequia",
       role: "Frontend Developer",
